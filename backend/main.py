@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import requests
+from routers import router
 
 app = FastAPI(title="DeQRypt Backend")
 
@@ -9,6 +11,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
+
+app.include_router(router)
 
 @app.get("/")
 def sanity_check():
