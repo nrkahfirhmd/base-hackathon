@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import requests
 from routers import router
 
 app = FastAPI(title="DeQRypt Backend")

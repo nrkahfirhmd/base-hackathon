@@ -15,3 +15,7 @@ def get_rates(req: RateRequest):
         amount_idr=amount_idr,
         amount_usdc=amount_usdc
     )
+
+@router.get("info/{address}")
+def get_wallet_info(address: str):
+    return {"status": "200", "name": "Unknown", "verified": False}

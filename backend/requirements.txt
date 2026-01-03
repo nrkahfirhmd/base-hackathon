@@ -3,6 +3,7 @@ uvicorn
 python-dotenv
 requests
 pydantic
+supabase
 # langchain
 # langchain-openai
 # coinbase-agentkit

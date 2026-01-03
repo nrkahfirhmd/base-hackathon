@@ -1,5 +1,13 @@
 from pydantic import BaseModel, Field
 
+class InfoProfile(BaseModel):
+    wallet_address: str
+    name: str
+    description: str = None
+    
+class VerificationRequest(BaseModel):
+    wallet_address: str
+
 class RateRequest(BaseModel):
     amount_idr: float = Field(..., gt=0, examples=20000)
 
