@@ -1,6 +1,10 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, status, HTTPException
+
 from schemas import RateRequest, RateResponse
+from schemas import InfoRequest, InfoResponse, InfoProfile
+
 from services import convert_idr_to_usdc, get_usdc_rate
+from services import get_address_info, upsert_info_data
 
 router = APIRouter(prefix="/api", tags=["core"])
 
@@ -16,6 +20,25 @@ def get_rates(req: RateRequest):
         amount_usdc=amount_usdc
     )
 
-@router.get("info/{address}")
-def get_wallet_info(address: str):
-    return {"status": "200", "name": "Unknown", "verified": False}
+@router.post("/info", response_model=InfoResponse, status_code=status.HTTP_200_OK)
+def get_wallet_info(req: InfoRequest):
+    data = get_address_info(req.address)
+    
+    if len(data) > 0: 
+        return data[0]
+    else:
+        return {
+            "wallet_address": req.address,
+            "name": "Unknown",
+            "is_verified": False,
+            "description": "Belum terdaftar di DeQRypt"
+        }
+        
+@router.post("/info/add", status_code=status.HTTP_201_CREATED)
+def add_info(profile: InfoProfile):
+    try:
+        data = upsert_info_data(profile)
+        
+        return {"status": "success", "message": "Profile updated", "data": data}
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))

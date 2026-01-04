@@ -4,7 +4,11 @@ python-dotenv
 requests
 pydantic
 supabase
-# langchain
-# langchain-openai
-# coinbase-agentkit
-# coinbase-agentkit-langchain
+
+langchain
+langchain-core
+langchain-community
+langchain-google-genai
+
+coinbase-agentkit
+coinbase-agentkit-langchain

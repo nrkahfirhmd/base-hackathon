@@ -1,4 +1,6 @@
 import requests
+from database import supabase
+from schemas import InfoProfile
 
 def get_usdc_rate() -> float:
     COINGECKO_URL = "https://api.coingecko.com/api/v3/simple/price?ids=usd-coin&vs_currencies=idr"
@@ -15,3 +17,25 @@ def get_usdc_rate() -> float:
 def convert_idr_to_usdc(amount_idr: float) -> float:
     rate = get_usdc_rate()
     return round(amount_idr / rate, 2)
+
+def get_address_info(address: str) -> str:
+    response = supabase.table("infos").select("*").eq("wallet_address", address).execute()
+    
+    return response.data
+
+def upsert_info_data(profile: InfoProfile) -> dict:
+    data = {
+        "wallet_address": profile.wallet_address,
+        "name": profile.name,
+        "description": profile.description
+    }
+    
+    try:
+        response = supabase.table("infos").upsert(data).execute()
+        
+        if not response.data:
+            RuntimeError("Failed to upsert info")
+        
+        return response.data[0]
+    except Exception as e:
+        raise RuntimeError(f"Supabase error: {str(e)}")

@@ -15,3 +15,12 @@ class RateResponse(BaseModel):
     rate_idr_usdc: float
     amount_idr: float
     amount_usdc: float
+    
+class InfoRequest(BaseModel):
+    address: str
+
+class InfoResponse(BaseModel):
+    wallet_address: str
+    name: str
+    description: str
+    is_verified: bool
