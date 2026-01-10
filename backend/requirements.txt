@@ -12,3 +12,5 @@ langchain-google-genai
 
 coinbase-agentkit
 coinbase-agentkit-langchain
+
+web3
