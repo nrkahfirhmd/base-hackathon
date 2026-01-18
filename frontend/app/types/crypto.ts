@@ -4,5 +4,5 @@ export interface CryptoAsset {
   symbol: string;
   price: string;
   change: string;
-  color: string; // Tailwind class string, misal: "bg-blue-500"
+  color: string;
 }
