@@ -5,7 +5,7 @@ const Header = () => (
     <div className="flex items-center gap-3">
       {/* Avatar Placeholder */}
       <div className="w-10 h-10 rounded-full bg-gray-700 overflow-hidden border border-gray-600">
-        <Image src="https://api.dicebear.com/7.x/avataaars/svg?seed=Dzikri" width={40} height={40} alt="Profile" className="w-full h-full object-cover" unoptimized />
+        <Image src="/profile-pic.svg" alt="Profile Picture" width={40} height={40} />
       </div>
       <div>
         <p className="text-gray-400 text-xs">Good Morning!</p>

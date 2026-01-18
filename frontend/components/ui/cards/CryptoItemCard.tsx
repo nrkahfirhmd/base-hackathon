@@ -1,7 +1,7 @@
 import { CryptoAsset } from "@/app/types/crypto";
 
 const CryptoItemCard = ({ asset }: { asset: CryptoAsset }) => (
-  <div className="flex items-center justify-between p-4 mb-3 rounded-2xl bg-[#1e1e2d] border border-gray-800 hover:bg-[#252536] transition">
+  <div className="flex items-center justify-between p-6 mb-2 rounded-2xl bg-[#1e1e2d] border border-gray-800 hover:bg-[#252536] transition">
     <div className="flex items-center gap-3">
       {/* Icon Logo Coin */}
       <div className={`w-10 h-10 rounded-full ${asset.color} flex items-center justify-center text-white font-bold opacity-80`}>

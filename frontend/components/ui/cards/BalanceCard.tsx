@@ -1,9 +1,5 @@
 const BalanceCard = () => (
-  <div className="relative w-full p-5 rounded-3xl bg-linear-to-br from-[#2b2b3d] to-[#1a1a24] border border-gray-800 shadow-lg mb-6 overflow-hidden">
-    {/* Efek Blur/Glow Background */}
-    <div className="absolute -top-10 -left-10 w-32 h-32 bg-purple-500 rounded-full mix-blend-screen filter blur-3xl opacity-20"></div>
-    <div className="absolute top-10 right-10 w-24 h-24 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-20"></div>
-
+  <div className="relative w-full p-4 rounded-2xl bg-linear-to-br from-[#2b2b3d] to-[#1a1a24] border border-gray-800 shadow-lg mb-4 overflow-hidden">
     <div className="relative z-10">
       <div className="flex justify-between items-start mb-2">
         <div>

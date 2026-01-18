@@ -30,10 +30,7 @@ const PrimaryButton: React.FC<PrimaryButtonProps> = ({
         rounded-2xl
         bg-linear-to-b from-[#4338ca] via-[#5b21b6] to-[#7c3aed]
         text-white font-semibold text-lg
-        shadow-[0_8px_30px_rgba(91,33,182,0.4)]
-        hover:shadow-[0_8px_40px_rgba(91,33,182,0.6)]
-        hover:scale-[1.02]
-        active:scale-[0.98]
+        hover:scale-[1.01]
         transition-all duration-200
         disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
         ${className}
