@@ -23,6 +23,11 @@ def get_address_info(address: str) -> str:
     
     return response.data
 
+def verify_info(address: str) -> str:
+    response =  supabase.table("infos").update({"is_verified": True}).eq("wallet_address", address).execute()
+    
+    return response.data
+
 def upsert_info_data(profile: InfoProfile) -> dict:
     data = {
         "wallet_address": profile.wallet_address,
