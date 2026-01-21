@@ -44,7 +44,7 @@ const ScanQrNav = () => {
                   <path d="M20 16v2a2 2 0 0 1-2 2h-2" />
                   <path d="M8 20H6a2 2 0 0 1-2-2v-2" />
                   <line x1="7" y1="12" x2="17" y2="12" strokeOpacity="0.5" />
-                  
+                  {/**/}
                 </svg>
               </div>
             </Link>
