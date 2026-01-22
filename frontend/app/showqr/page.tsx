@@ -9,7 +9,6 @@ export default function ShowQrPage() {
   const router = useRouter();
 
   return (
-   
     <div className="relative flex flex-col min-h-screen bg-[#1B1E34] font-sans overflow-y-auto">
       {/* Tombol Back */}
       <div className="absolute top-8 left-6 z-50">

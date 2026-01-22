@@ -13,7 +13,7 @@ const CryptoItemCard = ({ asset }: { asset: CryptoAsset }) => (
       </div>
     </div>
 
-    {/* Mini Chart (Tengah) */}
+    {/* Mini Chart */}
     <div className="hidden sm:block">
        <svg width="40" height="20" viewBox="0 0 40 20">
           <path d="M1 15 L 10 5 L 20 12 L 30 2 L 39 8" stroke="#10b981" strokeWidth="1.5" fill="none"/>
