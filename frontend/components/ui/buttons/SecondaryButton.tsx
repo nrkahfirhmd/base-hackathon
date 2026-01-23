@@ -29,12 +29,9 @@ const SecondaryButton: React.FC<SecondaryButtonProps> = ({
         py-4 px-8
         rounded-3xl
         bg-transparent
-        text-white font-semibold text-lg
+        text-white/80 font-semibold text-md
         border-2 border-white/20
-        hover:border-white/40
-        hover:bg-white/5
-        active:scale-[0.98]
-        transition-all duration-200
+        cursor-pointer
         disabled:opacity-50 disabled:cursor-not-allowed
         ${className}
       `}

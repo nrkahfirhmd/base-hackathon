@@ -12,14 +12,12 @@ const BottomNav = () => {
           preserveAspectRatio="none"
         >
           <defs>
-            {/* Gradient Background */}
             <linearGradient id="navGradient" x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#2f1f4f" />
               <stop offset="50%" stopColor="#422c76" />
               <stop offset="100%" stopColor="#6a3eb7" />
             </linearGradient>
           </defs>
-          {/* setengah lingkaran dengan arc */}
           <path
             fill="url(#navGradient)"
             d="M0,25 L143,25 A45,45 0 0,0 232,25 L375,25 L375,95 L0,95 Z"
@@ -30,7 +28,7 @@ const BottomNav = () => {
           {/* History Icon */}
           <Link
             href="/transaction"
-            className="text-white/70 cursor-pointer transition-colors hover:text-white"
+            className="text-white/70 cursor-pointer "
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -75,7 +73,7 @@ const BottomNav = () => {
           </div>
 
           {/* User Icon */}
-          <button className="text-white/70 cursor-pointer">
+          <Link href="/profile" className="text-white/70 cursor-pointer">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="32"
@@ -90,7 +88,7 @@ const BottomNav = () => {
               <circle cx="12" cy="8" r="4" />
               <path d="M6 21v-2a6 6 0 0 1 12 0v2" />
             </svg>
-          </button>
+          </Link>
         </div>
       </div>
     </div>

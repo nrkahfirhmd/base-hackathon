@@ -29,9 +29,7 @@ const PrimaryButton: React.FC<PrimaryButtonProps> = ({
         py-4 px-8
         rounded-2xl
         bg-linear-to-b from-[#4338ca] via-[#5b21b6] to-[#7c3aed]
-        text-white font-semibold text-lg
-        hover:scale-[1.01]
-        transition-all duration-200
+        text-white font-semibold text-md
         disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
         ${className}
       `}
