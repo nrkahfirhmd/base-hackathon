@@ -1,3 +1,5 @@
+"use client";
+
 import { useState } from "react";
 import { payWithApprove } from "../constant/pay";
 import { USDC } from "../constant/smartContract";

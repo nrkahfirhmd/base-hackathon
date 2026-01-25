@@ -1,5 +1,7 @@
 // web3Pay.ts
 
+"use client";
+
 declare global {
   interface Window {
     ethereum?: any;
