@@ -5,6 +5,8 @@ class InfoProfile(BaseModel):
     wallet_address: str
     name: str
     description: str = None
+    image_url: Optional[str] = None  
+    image_path: Optional[str] = None 
     
 class VerificationRequest(BaseModel):
     wallet_address: str
@@ -22,6 +24,7 @@ class InfoResponse(BaseModel):
     name: str
     description: str
     is_verified: bool
+    image_url: Optional[str] = None
     
 class DepositRequest(BaseModel):
     protocol: str  

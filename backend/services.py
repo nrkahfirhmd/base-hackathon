@@ -40,13 +40,31 @@ def upsert_info_data(profile: InfoProfile) -> dict:
         "name": profile.name,
         "description": profile.description
     }
-    
+    image_url = None
+    if hasattr(profile, "image_path") and profile.image_path:
+        try:
+            with open(profile.image_path, "rb") as img_file:
+                import base64
+                encoded = base64.b64encode(img_file.read()).decode("utf-8")
+            imgbb_api = "https://api.imgbb.com/1/upload"
+            payload = {
+                "key": settings.IMAGE_API_KEY,
+                "image": encoded
+            }
+            resp = requests.post(imgbb_api, data=payload, timeout=10)
+            resp.raise_for_status()
+            result = resp.json()
+            image_url = result["data"]["url"]
+        except Exception as e:
+            raise RuntimeError(f"Failed to upload image to ImgBB: {str(e)}")
+    elif hasattr(profile, "image_url") and profile.image_url:
+        image_url = profile.image_url
+    if image_url:
+        data["image_url"] = image_url
     try:
         response = supabase.table("infos").upsert(data).execute()
-        
         if not response.data:
-            RuntimeError("Failed to upsert info")
-        
+            raise RuntimeError("Failed to upsert info")
         return response.data[0]
     except Exception as e:
         raise RuntimeError(f"Supabase error: {str(e)}")

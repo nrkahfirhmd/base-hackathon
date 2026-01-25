@@ -46,22 +46,26 @@ def get_rates(amount_idr: float):
 @router.post("/info", response_model=InfoResponse, status_code=status.HTTP_200_OK)
 def get_wallet_info(req: InfoRequest):
     data = get_address_info(req.address)
-    
-    if len(data) > 0: 
-        return data[0]
+    if len(data) > 0:
+        d = data[0]
+        if "image_url" not in d:
+            d["image_url"] = None
+        return d
     else:
         return {
             "wallet_address": req.address,
             "name": "Unknown",
             "is_verified": False,
-            "description": "Belum terdaftar di DeQRypt"
+            "description": "Belum terdaftar di DeQRypt",
+            "image_url": None
         }
         
 @router.post("/info/add", status_code=status.HTTP_201_CREATED)
 def add_info(profile: InfoProfile):
     try:
         data = upsert_info_data(profile)
-        
+        if "image_url" not in data:
+            data["image_url"] = None
         return {"status": "success", "message": "Profile updated", "data": data}
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
