@@ -35,6 +35,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <meta name="base:app_id" content="69763e273a92926b661fd516" />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased
         bg-gray-100 dark:bg-gray-900 flex justify-center min-h-screen`}
