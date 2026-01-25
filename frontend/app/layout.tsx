@@ -1,7 +1,6 @@
-import type { Metadata , Viewport} from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -16,6 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "DeQRypt",
   description: "Pay with Crypto via QR",
+  metadataBase: new URL("https://https://deqrypt.vercel.app/.com"),
   other: {
     "base:app_id": "69763e273a92926b661fd516",
   },
