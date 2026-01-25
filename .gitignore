@@ -1,0 +1,6 @@
+# Blockchain (Foundry)
+blockchain/out/
+blockchain/cache/
+blockchain/broadcast/
+blockchain/lib/
+blockchain/.env
