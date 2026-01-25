@@ -26,6 +26,7 @@ from services import (
     lending_withdraw,
     get_lending_projects,
 )
+from services import verify_info, get_user_lending_postions
 
 from agent import get_agent_executor
 
@@ -34,7 +35,7 @@ router = APIRouter(prefix="/api", tags=["core"])
 
 @router.get("/rates/{amount_idr}", response_model=RateResponse, status_code=status.HTTP_200_OK)
 def get_rates(amount_idr: float):
-    rate = get_usdc_rate()
+    rate = get_usdc_rate()  
     amount_usdc = convert_idr_to_usdc(amount_idr)
     
     return RateResponse(
@@ -80,8 +81,8 @@ def verify_merchant(req: VerificationRequest, background_tasks: BackgroundTasks)
             prompt = f"""
             Tugas: Verifikasi merchant dengan address {address}.
             Langkah:
-            1. Gunakan tool 'check_user_balance' untuk cek saldo ETH di address {address}.
-            2. Jika saldo > 0, anggap VALID. Jika 0, INVALID.
+            1. Gunakan tool 'check_user_balance' untuk cek saldo 'IDRX' (atau 'USDC') di address {address}.
+            2. Jika saldo token tersebut > 0, anggap VALID. Jika 0, INVALID.
             
             Jawab HANYA satu kata: "VALID" atau "INVALID".
             """
@@ -169,4 +170,14 @@ def lending_withdraw_endpoint(req: LendingWithdrawRequest):
             "message": data["message"]
         }
     except Exception as e:
+        print(f"Error Agent: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Agent gagal mengeksekusi: {str(e)}")
+    
+@router.get("/lending")
+def get_user_lending_info():
+    try:
+        data = get_user_lending_postions()
+
+        return {"status": "success", "message": "Profile updated", "data": data}
+    except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))

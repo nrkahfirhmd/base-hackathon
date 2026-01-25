@@ -12,6 +12,30 @@ from langchain_core.output_parsers import StrOutputParser
 
 w3 = Web3(Web3.HTTPProvider(settings.RPC_URL))
 
+ERC20_ABI = [
+    {
+        "constant": True,
+        "inputs": [{"name": "_owner", "type": "address"}],
+        "name": "balanceOf",
+        "outputs": [{"name": "balance", "type": "uint256"}],
+        "type": "function",
+    },
+    {
+        "constant": True,
+        "inputs": [],
+        "name": "decimals",
+        "outputs": [{"name": "", "type": "uint8"}],
+        "type": "function",
+    },
+    {
+        "constant": False,
+        "inputs": [{"name": "_to", "type": "address"}, {"name": "_value", "type": "uint256"}],
+        "name": "transfer",
+        "outputs": [{"name": "", "type": "bool"}],
+        "type": "function",
+    }
+]
+
 def get_web3_connection():
     if not w3.is_connected():
         raise ConnectionError("Gagal Terhubung ke RPC Node")
@@ -182,7 +206,7 @@ def recommend_best_protocol(amount: float):
     return _ai_recommend_protocol(pools, amount)
 
 @tool
-def invest_money(protocol: str, amount: float):
+def invest_money(protocol: str, amount: float, token_symbol: str = "USDC"):
     """
     Gunakan tool ini JIKA user ingin melakukan investasi atau deposit uang.
     Input:
@@ -190,6 +214,8 @@ def invest_money(protocol: str, amount: float):
     - amount: float (jumlah ETH/Asset yang mau dideposit)
     """
     w3_executor = get_web3_connection()
+    
+    token_address = settings.USDC_ADDRESS if token_symbol.upper() == "USDC" else settings.IDRX_ADDRESS
     
     yield_data = _fetch_live_apy_logic()
     proto = (protocol or "").lower()
@@ -203,20 +229,24 @@ def invest_money(protocol: str, amount: float):
     target_address = settings.MOONWELL_CONTRACT if protocol.lower() == "moonwell" else settings.AAVE_CONTRACT
     
     try:
-        amount_wei = w3_executor.to_wei(amount, 'ether')
+        contract = w3_executor.eth.contract(address=token_address, abi=ERC20_ABI)
+        decimals = contract.functions.decimals().call()
+        amount_int = int(amount * (10 ** decimals))
+        
         nonce = w3_executor.eth.get_transaction_count(settings.MY_WALLET)
         
-        tx = {
-            'nonce': nonce,
-            'to': Web3.to_checksum_address(target_address),
-            'value': amount_wei,
+        tx_func = contract.functions.transfer(target_address, amount_int)
+        
+        tx = tx_func.build_transaction({
+            'chainId': settings.CHAIN_ID,
             'gas': 210000,
             'gasPrice': w3_executor.eth.gas_price,
-            'chainId': settings.CHAIN_ID
-        }
-        
+            'nonce': nonce,
+        })
+
         signed_tx = w3_executor.eth.account.sign_transaction(tx, settings.PRIVATE_KEY)
         tx_hash = w3_executor.eth.send_raw_transaction(signed_tx.raw_transaction)
+
         tx_hex = w3_executor.to_hex(tx_hash)
         
         return f"INVESTASI SUKSES! {amount} ETH dikirim ke {protocol}.\nHash: {tx_hex}"
@@ -233,7 +263,7 @@ def check_wallet_balance():
     return f"Saldo Wallet ({settings.MY_WALLET}): {balance_eth} ETH"
 
 @tool
-def check_user_balance(target_address: str):
+def check_user_balance(target_address: str, token_symbol: str = "ETH"):
     """
     Gunakan tool ini untuk mengecek saldo ETH dari address wallet orang lain (bukan wallet agent).
     Input: target_address (string, contoh: '0x123...')
@@ -241,9 +271,29 @@ def check_user_balance(target_address: str):
     try:
         w3_executor = get_web3_connection()
         checksum_address = Web3.to_checksum_address(target_address)
-        balance_wei = w3_executor.eth.get_balance(checksum_address)
-        balance_eth = w3_executor.from_wei(balance_wei, 'ether')
-        return f"Saldo wallet {target_address} adalah: {balance_eth} ETH"
+        
+        if token_symbol.upper() == "ETH":
+            wei = w3_executor.eth.get_balance(checksum_address)
+            eth = w3_executor.from_wei(wei, 'ether')
+            return f"Saldo wallet {target_address} adalah: {eth} ETH"
+        
+        token_contract_address = None
+        if token_symbol.upper() == "USDC":
+            token_contract_address = settings.USDC_ADDRESS
+        elif token_symbol.upper() == "IDRX":
+            token_contract_address = settings.IDRX_ADDRESS
+            
+        if not token_contract_address:
+            return "Error: Token tidak dikenali. Gunakan ETH, USDC, atau IDRX."
+        
+        contract = w3_executor.eth.contract(address=token_contract_address, abi=ERC20_ABI)
+        
+        raw_balance = contract.functions.balanceOf(checksum_address).call()
+        decimals = contract.functions.decimals().call()
+        
+        human_balance = raw_balance / (10 ** decimals)
+        
+        return f"Saldo {token_symbol} di {target_address}: {human_balance}"
     except Exception as e:
         return f"Gagal mengecek saldo: {str(e)}"
 

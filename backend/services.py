@@ -29,6 +29,11 @@ def get_address_info(address: str) -> str:
     
     return response.data
 
+def get_user_lending_postions() -> str:
+    response = supabase.table("user_lending_positions").select("*").execute()
+    
+    return response.data
+
 def verify_info(address: str) -> str:
     response =  supabase.table("infos").update({"is_verified": True}).eq("wallet_address", address).execute()
     
@@ -157,6 +162,20 @@ def _get_token_config(token: str):
             "decimals": 18,
             "symbol": "WETH",
             "is_eth": True
+        }
+    elif key == "idrx":
+        return {
+            "address": settings.MOCK_IDRX_ADDRESS,  
+            "decimals": 18, 
+            "symbol": "IDRX",
+            "is_eth": False
+        }
+    elif key == "usdc":
+        return {
+            "address": settings.MOCK_USDC_ADDRESS,  
+            "decimals": 6, 
+            "symbol": "USDC",
+            "is_eth": False
         }
     raise RuntimeError("Unsupported token; only eth supported")
 
