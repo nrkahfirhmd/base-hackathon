@@ -3,14 +3,32 @@ from fastapi import APIRouter, status, HTTPException, BackgroundTasks
 from schemas import RateResponse, VerificationRequest
 from schemas import InfoRequest, InfoResponse, InfoProfile
 from schemas import DepositRequest, TransactionResponse
+from schemas import (
+    LendingRecommendRequest,
+    LendingRecommendResponse,
+    LendingDepositRequest,
+    LendingDepositResponse,
+    LendingWithdrawRequest,
+    LendingWithdrawResponse,
+    LendingPositionResponse,
+    LendingInfoResponse,
+    LendingTxResponse,
+)
 
 from services import convert_idr_to_usdc, get_usdc_rate
 from services import get_address_info, upsert_info_data
 from services import verify_info
+from services import (
+    get_lending_recommendation,
+    lending_deposit,
+    lending_get_positions_with_profit,
+    lending_withdraw,
+)
 
 from agent import get_agent_executor
 
 router = APIRouter(prefix="/api", tags=["core"])
+
 
 @router.get("/rates/{amount_idr}", response_model=RateResponse, status_code=status.HTTP_200_OK)
 def get_rates(amount_idr: float):
@@ -80,41 +98,59 @@ def verify_merchant(req: VerificationRequest, background_tasks: BackgroundTasks)
 
     return {"status": "pending", "message": "AI sedang memverifikasi wallet Anda..."}
 
-@router.post("/deposit", response_model=TransactionResponse)
-def deposit(request: DepositRequest):
-    print(f"Incoming Deposit Request: {request.amount} ETH to {request.protocol}")
-    
-    agent = get_agent_executor()
-    
-    if request.protocol.lower() == "auto":
-        prompt = (
-            f"Tolong cek APY terbaru untuk protokol Moonwell dan Aave. "
-            f"Bandingkan keduanya, pilih yang APY-nya paling tinggi. "
-            f"Lalu, lakukan deposit sebesar {request.amount} ETH ke protokol pemenang tersebut. "
-            f"Jangan lupa validasi keamanan (safety check) sebelum eksekusi."
-        )
-    else:
-        prompt = (
-            f"Tolong lakukan deposit sebesar {request.amount} ETH ke protokol {request.protocol}. "
-            f"Cek dulu APY-nya saat ini dan pastikan transaksinya aman menurut standar security check kamu."
-        )
-    
+@router.post("/lending/recommend", response_model=LendingRecommendResponse)
+def recommend_lending(req: LendingRecommendRequest):
     try:
-        print(f"Agent sedang bekerja...")
+        data = get_lending_recommendation(req.amount, req.token)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-        result = agent.invoke({"input": prompt})
 
-        agent_reply = result["output"]
-        print(f"Agent selesai: {agent_reply}")
-
+@router.post("/lending/deposit", response_model=LendingDepositResponse)
+def lending_deposit_endpoint(req: LendingDepositRequest):
+    try:
+        data = lending_deposit(req.protocol, req.amount, req.token)
         return {
-            "status": "processed",
-            "message": agent_reply,
-            "original_request": {
-                "amount": request.amount,
-                "protocol": request.protocol
-            }
+            "status": "submitted",
+            "protocol": req.protocol,
+            "amount": req.amount,
+            "tx_hash": data["tx_hash"],
+            "explorer_url": data["explorer_url"],
+            "message": data["message"]
         }
     except Exception as e:
-        print(f"Error Agent: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Agent gagal mengeksekusi: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/lending/info", response_model=LendingInfoResponse)
+def lending_info():
+    """
+    Auto-detect wallet dari settings, return semua posisi dengan profit calculation.
+    """
+    try:
+        from config import settings
+        wallet = settings.MY_WALLET
+        return lending_get_positions_with_profit(wallet)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/lending/withdraw", response_model=LendingWithdrawResponse)
+def lending_withdraw_endpoint(req: LendingWithdrawRequest):
+    try:
+        data = lending_withdraw(req.protocol, req.amount, req.token)
+        return {
+            "status": "submitted",
+            "protocol": req.protocol,
+            "tx_hash": data["tx_hash"],
+            "explorer_url": data["explorer_url"],
+            "withdraw_time": data.get("withdraw_time", ""),
+            "principal": data.get("principal", 0),
+            "current_profit": data.get("profit", 0),
+            "current_profit_pct": data.get("profit_pct", 0),
+            "total_received": data.get("profit", 0) + data.get("principal", 0),
+            "message": data["message"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
