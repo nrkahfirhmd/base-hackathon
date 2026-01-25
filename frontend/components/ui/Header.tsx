@@ -9,7 +9,7 @@ const Header = () => (
       </div>
       <div>
         <p className="text-gray-400 text-xs">Good Morning!</p>
-        <h2 className="text-white text-sm font-bold">Dzikri Basyiril Muminin</h2>
+        <h2 className="text-white text-sm font-bold">dzikribm</h2>
       </div>
     </div>
     <button className="p-2 rounded-full bg-gray-800 hover:bg-gray-700 transition">
