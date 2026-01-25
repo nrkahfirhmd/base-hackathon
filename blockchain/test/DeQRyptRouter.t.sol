@@ -11,59 +11,75 @@ contract DeQRyptRouterTest is Test {
     MockIDRX idrx;
     DeQRyptRouter router;
 
-    address payer = address(0xA11CE);
-    address merchant = address(0xB0B);
+    address payer;
+    address merchant;
+    address treasury;
 
-    function setUp() public {
+    function setUp() external {
+        payer = makeAddr("payer");
+        merchant = makeAddr("merchant");
+        treasury = makeAddr("treasury");
         usdc = new MockUSDC();
         idrx = new MockIDRX();
-        router = new DeQRyptRouter(address(idrx));
 
-        // kasih saldo test
-        idrx.mint(payer, 1_000_000e6);
+        router = new DeQRyptRouter(address(idrx), treasury);
+
+        // fund payer
         usdc.mint(payer, 1_000_000e6);
+        idrx.mint(payer, 1_000_000e6);
     }
 
-    function testHappyPath_IDRXPay_Success() public {
+    function testPay_IDRX_Direct() external {
         vm.startPrank(payer);
 
-        uint256 amount = 100e6;
+        uint256 amount = 15_000e6;
         idrx.approve(address(router), amount);
 
-        bytes32 ref = keccak256("INV-001");
+        bytes32 ref = bytes32("INV-0001");
         uint256 deadline = block.timestamp + 1 hours;
 
-        router.pay(address(idrx), amount, 0, merchant, ref, deadline);
+        router.pay(address(idrx), amount, amount, merchant, ref, deadline);
 
         vm.stopPrank();
 
         assertEq(idrx.balanceOf(merchant), amount);
     }
 
-    function testRevert_NoAllowance() public {
+    function testPay_USDC_SimulatedSwap_ToTreasury_AndMintIDRX() external {
+        // owner config
+        router.setAllowedToken(address(usdc), true);
+
+        // 1 USDC -> 15,000 IDRX
+        router.setRate(address(usdc), 15_000e6);
+
         vm.startPrank(payer);
 
-        uint256 amount = 100e6;
-        bytes32 ref = keccak256("INV-002");
+        uint256 amountInUSDC = 1e6; // 1 USDC
+        usdc.approve(address(router), amountInUSDC);
+
+        bytes32 ref = bytes32("INV-0002");
         uint256 deadline = block.timestamp + 1 hours;
 
-        // tanpa approve
-        vm.expectRevert(); // ERC20: insufficient allowance (bisa beda message)
-        router.pay(address(idrx), amount, 0, merchant, ref, deadline);
+        uint256 minOut = 15_000e6; // expect 15,000 IDRX
+        uint256 out = router.pay(address(usdc), amountInUSDC, minOut, merchant, ref, deadline);
 
         vm.stopPrank();
+
+        assertEq(out, 15_000e6);
+        assertEq(usdc.balanceOf(treasury), amountInUSDC);
+        assertEq(idrx.balanceOf(merchant), 15_000e6);
     }
 
-    function testRevert_SwapNotEnabled_WhenTokenInNotIDRX() public {
+    function testPay_USDC_RevertIfNotAllowed() external {
         vm.startPrank(payer);
 
-        uint256 amount = 100e6;
+        uint256 amount = 1e6;
         usdc.approve(address(router), amount);
 
-        bytes32 ref = keccak256("INV-003");
+        bytes32 ref = bytes32("INV-0003");
         uint256 deadline = block.timestamp + 1 hours;
 
-        vm.expectRevert(DeQRyptRouter.SwapNotEnabled.selector);
+        vm.expectRevert(DeQRyptRouter.TokenNotAllowed.selector);
         router.pay(address(usdc), amount, 0, merchant, ref, deadline);
 
         vm.stopPrank();
