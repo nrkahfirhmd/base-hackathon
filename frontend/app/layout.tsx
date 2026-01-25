@@ -73,7 +73,6 @@ export default function RootLayout({
           })}
         />
       </head>
-      <MiniAppInitializer>
         <body
           className={`${geistSans.variable} ${geistMono.variable} antialiased
         bg-gray-100 dark:bg-gray-900 flex justify-center min-h-screen`}
@@ -82,7 +81,6 @@ export default function RootLayout({
             {children}
           </div>
         </body>
-      </MiniAppInitializer>
     </html>
   );
 }
