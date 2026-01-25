@@ -82,9 +82,9 @@ class LendingDepositResponse(BaseModel):
     message: str
 
 class LendingWithdrawRequest(BaseModel):
-    protocol: str
+    id: int
     token: str = "eth"
-    amount: float = Field(..., description="Amount in LP units; use -1 for all from this protocol")
+    amount: float = Field(..., description="Amount in LP units; use -1 for all from this position")
 
 class LendingPositionResponse(BaseModel):
     wallet_address: str
@@ -93,6 +93,7 @@ class LendingPositionResponse(BaseModel):
     total_lp_balance: float
 
 class LendingPositionDetail(BaseModel):
+    id: int
     protocol: str
     amount_deposited: float
     apy: float
@@ -103,7 +104,7 @@ class LendingPositionDetail(BaseModel):
 
 class LendingInfoResponse(BaseModel):
     wallet_address: str
-    positions: list  # list of LendingPositionDetail
+    positions: list 
     total_deposited: float
     total_current_profit: float
 
@@ -124,3 +125,11 @@ class LendingWithdrawResponse(BaseModel):
     current_profit_pct: float
     total_received: float
     message: str
+
+
+class LendingProject(BaseModel):
+    protocol: str
+    apy: float
+    tvl: float
+    symbol: str
+    pool_id: str

@@ -13,6 +13,7 @@ from schemas import (
     LendingPositionResponse,
     LendingInfoResponse,
     LendingTxResponse,
+    LendingProject,
 )
 
 from services import convert_idr_to_usdc, get_usdc_rate
@@ -23,6 +24,7 @@ from services import (
     lending_deposit,
     lending_get_positions_with_profit,
     lending_withdraw,
+    get_lending_projects,
 )
 
 from agent import get_agent_executor
@@ -107,6 +109,14 @@ def recommend_lending(req: LendingRecommendRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.get("/lending/project", response_model=list[LendingProject])
+def lending_project_list():
+    try:
+        return get_lending_projects()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/lending/deposit", response_model=LendingDepositResponse)
 def lending_deposit_endpoint(req: LendingDepositRequest):
     try:
@@ -139,17 +149,19 @@ def lending_info():
 @router.post("/lending/withdraw", response_model=LendingWithdrawResponse)
 def lending_withdraw_endpoint(req: LendingWithdrawRequest):
     try:
-        data = lending_withdraw(req.protocol, req.amount, req.token)
+        data = lending_withdraw(req.id, req.amount, req.token)
         return {
             "status": "submitted",
-            "protocol": req.protocol,
+            "protocol": data.get("protocol", ""),
             "tx_hash": data["tx_hash"],
             "explorer_url": data["explorer_url"],
             "withdraw_time": data.get("withdraw_time", ""),
             "principal": data.get("principal", 0),
             "current_profit": data.get("profit", 0),
             "current_profit_pct": data.get("profit_pct", 0),
-            "total_received": data.get("profit", 0) + data.get("principal", 0),
+            "withdrawn": data.get("withdrawn", 0),
+            "total_received": data.get("profit", 0) + data.get("withdrawn", 0),
+            "remaining_amount": data.get("remaining_amount", 0),
             "message": data["message"]
         }
     except Exception as e:

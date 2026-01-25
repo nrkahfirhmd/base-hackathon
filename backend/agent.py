@@ -22,13 +22,15 @@ def _fetch_live_apy_logic():
     print("DEBUG: Fetching DefiLlama pools...")
     url = "https://yields.llama.fi/pools"
     
-    trusted_protocols = ["moonwell", "aave-v3", "compound-v3", "spark"]
+    trusted_protocols = ["moonwell", "moonwell-lending", "aave-v3", "aave", "compound-v3", "compound", "spark"]
     results = []
     
     try:
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
             data = response.json()['data']
+            pools_by_protocol = {}
+            
             for pool in data:
                 if pool.get('chain') != 'Base':
                     continue
@@ -41,17 +43,33 @@ def _fetch_live_apy_logic():
                 if apy <= 0 or apy > 100:
                     continue
                 
-                results.append({
-                    "protocol": project,
+                proto_normalized = project
+                if "moonwell" in project:
+                    proto_normalized = "moonwell"
+                elif "aave" in project:
+                    proto_normalized = "aave-v3"
+                elif "compound" in project:
+                    proto_normalized = "compound-v3"
+                
+                if proto_normalized not in pools_by_protocol:
+                    pools_by_protocol[proto_normalized] = []
+                
+                pools_by_protocol[proto_normalized].append({
+                    "protocol": proto_normalized,
                     "apy": round(apy, 2),
                     "tvl": pool.get('tvlUsd', 0),
                     "symbol": pool.get('symbol', 'Unknown'),
                     "pool_id": pool.get('pool', '')
                 })
             
+            # Get top 2 APY pools per protocol
+            for proto, pools_list in pools_by_protocol.items():
+                pools_list.sort(key=lambda x: x['apy'], reverse=True)
+                results.extend(pools_list[:2])
+            
             results.sort(key=lambda x: x['apy'], reverse=True)
-            print(f"\tFound {len(results)} Base pools from trusted protocols")
-            return results[:5]
+            print(f"\tFound {len(results)} Base pools from trusted protocols (top 2 per protocol)")
+            return results
         else:
             print(f"\tDefiLlama API error: {response.status_code}")
     except Exception as e:

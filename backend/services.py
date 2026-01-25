@@ -109,6 +109,12 @@ def _get_days_from_now(timestamp_str: str) -> int:
         return 0
 
 
+def get_lending_projects():
+    """Return daftar project Base dari DefiLlama yang lolos filter trusted."""
+    pools = _fetch_live_apy_logic()
+    return pools or []
+
+
 def _require_conn():
     if not w3_lending.is_connected():
         raise RuntimeError("RPC not connected")
@@ -244,6 +250,7 @@ def lending_get_positions(wallet: str):
 def lending_get_positions_with_profit(wallet: str):
     """
     Get posisi dengan profit calculation based on days held dan APY.
+    Include id untuk setiap position.
     """
     response = supabase.table("user_lending_positions").select("*").eq("wallet_address", wallet).execute()
     positions_data = response.data or []
@@ -253,7 +260,10 @@ def lending_get_positions_with_profit(wallet: str):
     total_current_profit = 0
     
     for pos in positions_data:
+        pos_id = pos.get("id")
         principal = pos.get("amount", 0)
+        if principal is None or principal <= 0:
+            continue
         apy = pos.get("apy", 0)
         deposited_at = pos.get("deposited_at", "")
         
@@ -265,6 +275,7 @@ def lending_get_positions_with_profit(wallet: str):
         total_current_profit += current_profit
         
         positions.append({
+            "id": pos_id,
             "protocol": pos["protocol"],
             "amount_deposited": principal,
             "apy": apy,
@@ -297,23 +308,19 @@ def lending_deposit(protocol: str, amount: float, token: str):
     sender = Web3.to_checksum_address(settings.MY_WALLET)
     nonce = w3.eth.get_transaction_count(sender)
 
-    # Wrap ETH to WETH
     wrap_hash = None
     if token_conf.get("is_eth"):
         wrap_hash = _wrap_eth(amount_units, nonce, sender)
         nonce += 1
 
-    # Get target protocol address
     proto_key = protocol.lower()
     protocol_info = settings.PROTOCOL_ADDRESSES.get(proto_key)
     
     if protocol_info:
         target_address = Web3.to_checksum_address(protocol_info["address"])
     else:
-        # Fallback to MockLendingPool jika protocol tidak dikenal
         target_address = Web3.to_checksum_address(settings.LENDING_POOL_ADDRESS)
     
-    # Approve WETH to target address
     allowance = token_contract.functions.allowance(sender, target_address).call()
     if allowance < amount_units:
         approve_tx = token_contract.functions.approve(target_address, amount_units).build_transaction(
@@ -324,17 +331,13 @@ def lending_deposit(protocol: str, amount: float, token: str):
     else:
         approve_hash = None
 
-    # Deposit via protocol contract (simplified: assume deposit(amount, onBehalfOf) signature)
-    # For real protocols, may need different ABI/method
     try:
         if protocol_info:
-            # Try generic deposit method
             protocol_contract = _require_conn().eth.contract(address=target_address, abi=LENDING_POOL_ABI)
             deposit_tx = protocol_contract.functions.deposit(amount_units, sender).build_transaction(
                 {**_build_tx(sender, nonce), "gas": 250000}
             )
         else:
-            # Use MockLendingPool
             pool = _pool()
             deposit_tx = pool.functions.deposit(amount_units, sender).build_transaction(
                 {**_build_tx(sender, nonce), "gas": 250000}
@@ -344,23 +347,27 @@ def lending_deposit(protocol: str, amount: float, token: str):
     
     deposit_hash = _send_tx(deposit_tx)
     
-    # Get current APY dari DefiLlama untuk reference
     pools_data = _fetch_live_apy_logic()
     pool_info = next((p for p in pools_data if p["protocol"] == proto_key), None)
-    current_apy = pool_info["apy"] if pool_info else 5.0
+    if not pool_info:
+        raise RuntimeError(f"APY for protocol {protocol} not found from DefiLlama")
+    current_apy = pool_info.get("apy", 0)
+    if current_apy <= 0:
+        raise RuntimeError(f"Invalid APY fetched for protocol {protocol}")
     
-    # Track posisi: amount adalah principal, APY untuk nanti hitung profit
     from datetime import datetime
     deposited_time = datetime.now().isoformat()
     
-    supabase.table("user_lending_positions").insert({
+    insert_resp = supabase.table("user_lending_positions").insert({
         "wallet_address": sender,
-        "protocol": protocol,
-        "amount": amount,  # Principal amount
-        "lp_shares": amount,  # For now, same as amount
-        "apy": current_apy,  # APY snapshot saat deposit
+        "protocol": proto_key,
+        "amount": amount,  
+        "lp_shares": amount,  
+        "apy": current_apy,  
         "deposited_at": deposited_time
     }).execute()
+    if getattr(insert_resp, "error", None):
+        raise RuntimeError(f"Failed to insert position: {insert_resp.error}")
 
     explorer = settings.EXPLORER_BASE
     return {
@@ -373,48 +380,46 @@ def lending_deposit(protocol: str, amount: float, token: str):
     }
 
 
-def lending_withdraw(protocol: str, amount_lp: float, token: str):
+def lending_withdraw(position_id: int, amount_lp: float, token: str):
     """
-    Withdraw dari protocol dan hitung profit.
+    Withdraw dari position by ID dan hitung profit.
     amount_lp: -1 untuk withdraw semua; atau spesifik amount
     """
     token_conf = _get_token_config(token)
     w3 = _require_conn()
     sender = Web3.to_checksum_address(settings.MY_WALLET)
     
-    # Cari posisi di DB
-    response = supabase.table("user_lending_positions").select("*").eq("wallet_address", sender).eq("protocol", protocol).execute()
+    response = supabase.table("user_lending_positions").select("*").eq("id", position_id).execute()
     position_data = response.data
     if not position_data:
-        raise RuntimeError(f"No position found for protocol {protocol}")
+        raise RuntimeError(f"No position found with ID {position_id}")
     
     position = position_data[0]
-    principal_amount = position["amount"]  # Amount yang di-deposit
+    protocol = position.get("protocol", "").lower()
+    principal_amount = position["amount"] 
     
-    # Get target protocol address
-    proto_key = protocol.lower()
-    protocol_info = settings.PROTOCOL_ADDRESSES.get(proto_key)
+    protocol_info = settings.PROTOCOL_ADDRESSES.get(protocol)
     
     if protocol_info:
         target_address = Web3.to_checksum_address(protocol_info["address"])
-        lp_address = None  # Real protocol LP token beda
+        lp_address = None 
     else:
-        # MockLendingPool fallback
         pool = _pool()
         lp_address = pool.functions.lpToken().call()
         target_address = pool.address
     
-    # Get LP balance for validation
     if lp_address:
         lp_contract = _erc20(lp_address)
         shares_raw = lp_contract.functions.balanceOf(sender).call()
     else:
-        shares_raw = _to_units(principal_amount, settings.LP_DECIMALS)  # Fallback
+        shares_raw = _to_units(principal_amount, settings.LP_DECIMALS) 
 
     if amount_lp < 0:
-        withdraw_units = shares_raw
+        withdraw_amount_base = principal_amount 
     else:
-        withdraw_units = _to_units(amount_lp, settings.LP_DECIMALS)
+        withdraw_amount_base = amount_lp
+
+    withdraw_units = _to_units(withdraw_amount_base, settings.LP_DECIMALS)
     
     if withdraw_units <= 0:
         raise RuntimeError("Invalid withdraw amount")
@@ -423,7 +428,6 @@ def lending_withdraw(protocol: str, amount_lp: float, token: str):
 
     nonce = w3.eth.get_transaction_count(sender)
     
-    # Build withdraw transaction
     try:
         if protocol_info:
             protocol_contract = w3.eth.contract(address=target_address, abi=LENDING_POOL_ABI)
@@ -443,33 +447,49 @@ def lending_withdraw(protocol: str, amount_lp: float, token: str):
 
     unwrap_hash = None
     if token_conf.get("is_eth"):
-        # Unwrap WETH to ETH
-        preview_out = withdraw_units  # Simplified; real protocol may differ
+        preview_out = withdraw_units  
         unwrap_hash = _unwrap_weth(preview_out, nonce, sender)
     
-    # Calculate profit berdasarkan hari yang diheld FROM deposited_at hingga sekarang
     days_held = _get_days_from_now(position.get("deposited_at", ""))
-    profit = _calculate_profit(principal_amount, position.get("apy", 0), days_held)
-    profit_pct = (profit / principal_amount * 100) if principal_amount > 0 else 0
+    profit_withdrawn = _calculate_profit(withdraw_amount_base, position.get("apy", 0), days_held)
+    profit_pct = (profit_withdrawn / withdraw_amount_base * 100) if withdraw_amount_base > 0 else 0
     
-    # Delete position from DB
-    supabase.table("user_lending_positions").delete().eq("id", position["id"]).execute()
+    remaining_amount = principal_amount - withdraw_amount_base
+    if remaining_amount < 0 and abs(remaining_amount) <= 1e-12:
+        remaining_amount = 0
+    import logging
+    if amount_lp < 0 or remaining_amount == 0:
+        del_resp = supabase.table("user_lending_positions").delete().eq("id", position["id"]).eq("wallet_address", sender).execute()
+        logging.warning(f"Delete resp: {getattr(del_resp, 'data', None)} | {getattr(del_resp, 'error', None)}")
+        check = supabase.table("user_lending_positions").select("id").eq("id", position["id"]).eq("wallet_address", sender).execute()
+        logging.warning(f"Check after delete: {getattr(check, 'data', None)} | {getattr(check, 'error', None)}")
+        if check.data:
+            del2 = supabase.table("user_lending_positions").delete().eq("id", position["id"]).eq("wallet_address", sender).execute()
+            logging.warning(f"Second delete resp: {getattr(del2, 'data', None)} | {getattr(del2, 'error', None)}")
+            check2 = supabase.table("user_lending_positions").select("id").eq("id", position["id"]).eq("wallet_address", sender).execute()
+            if check2.data:
+                supabase.table("user_lending_positions").update({"amount": 0, "lp_shares": 0}).eq("id", position["id"]).eq("wallet_address", sender).execute()
+    else:
+        supabase.table("user_lending_positions").update({
+            "amount": remaining_amount,
+            "lp_shares": remaining_amount
+        }).eq("id", position["id"]).execute()
     
     from datetime import datetime
     withdraw_time = datetime.now().isoformat()
     
-    # Calculate withdrawn amount
-    withdrawn_amount = _from_units(withdraw_units, settings.LP_DECIMALS) if protocol_info else amount_lp
-    
+    withdrawn_amount = withdraw_amount_base
     explorer = settings.EXPLORER_BASE
     return {
         "tx_hash": tx_hash,
         "unwrap_hash": unwrap_hash,
         "explorer_url": f"{explorer}{tx_hash}",
         "withdraw_time": withdraw_time,
+        "protocol": protocol,
         "principal": principal_amount,
-        "withdrawn": withdrawn_amount if withdrawn_amount else principal_amount,
-        "profit": round(profit, 8),
+        "withdrawn": withdrawn_amount,
+        "profit": round(profit_withdrawn, 8),
         "profit_pct": round(profit_pct, 2),
-        "message": f"Withdraw from {protocol} submitted (Profit: {profit:.8f} ETH, {profit_pct:.2f}%)"
+        "remaining_amount": max(0, remaining_amount),
+        "message": f"Withdraw from {protocol} submitted (Profit on withdrawn: {profit_withdrawn:.8f} ETH, {profit_pct:.2f}%)"
     }
