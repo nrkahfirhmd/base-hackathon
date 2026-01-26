@@ -1,9 +1,10 @@
 from fastapi import APIRouter, status, HTTPException, BackgroundTasks
+from fastapi import Form, UploadFile, File
 import re
 from config import settings
 
 from schemas import RateResponse, VerificationRequest
-from schemas import InfoRequest, InfoResponse, InfoProfile
+from schemas import InfoRequest, InfoResponse
 from schemas import AddHistoryRequest, AddHistoryResponse
 from schemas import ViewHistoryRequest
 from schemas import (
@@ -50,8 +51,10 @@ def get_wallet_info(req: InfoRequest):
     data = get_address_info(req.address)
     if len(data) > 0:
         d = data[0]
-        if "image_url" not in d:
-            d["image_url"] = None
+        if d.get("description") is None:
+            d["description"] = ""
+
+        d["image_url"] = d.get("image_url")
         return d
     else:
         return {
@@ -63,9 +66,14 @@ def get_wallet_info(req: InfoRequest):
         }
         
 @router.post("/info/add", status_code=status.HTTP_201_CREATED)
-def add_info(profile: InfoProfile):
+async def add_info(
+    wallet_address: str = Form(...),
+    name: str = Form(...),
+    description: str = Form(None),
+    image: UploadFile = File(None)
+):
     try:
-        data = upsert_info_data(profile)
+        data = await upsert_info_data(wallet_address, name, description, image)
         if "image_url" not in data:
             data["image_url"] = None
         return {"status": "success", "message": "Profile updated", "data": data}
@@ -82,7 +90,7 @@ def verify_merchant(req: VerificationRequest, background_tasks: BackgroundTasks)
             prompt = f"""
             Tugas: Verifikasi merchant dengan address {address}.
             Langkah:
-            1. Gunakan tool 'check_user_balance' untuk cek saldo 'IDRX' (atau 'USDC') di address {address}.
+            1. Gunakan tool 'check_user_balance' untuk cek saldo 'mIDRX' (atau 'mUSDC') di address {address}.
             2. Jika saldo token tersebut > 0, anggap VALID. Jika 0, INVALID.
             
             Jawab HANYA satu kata: "VALID" atau "INVALID".
@@ -131,14 +139,14 @@ def deposit(req: LendingDepositRequest):
             f"1. Cek APY terbaru untuk 'moonwell' dan 'aave' menggunakan tool yang tersedia.\n"
             f"2. Bandingkan mana yang lebih tinggi.\n"
             f"3. Panggil tool 'lending_deposit' untuk melakukan deposit sebesar {req.amount} ke protokol pemenang.\n"
-            f"   (Catatan: Gunakan token 'IDRX' untuk transaksi ini).\n" 
+            f"   (Catatan: Gunakan token {req.token} untuk transaksi ini).\n" 
             f"4. Validasi keamanan (safety check) sudah otomatis dilakukan oleh tool."
         )
     else:
         prompt = (
             f"Tugas: Deposit ke {req.protocol}.\n"
             f"1. Panggil tool 'lending_deposit' untuk deposit {req.amount} ke '{req.protocol}'.\n"
-            f"   (Catatan: Gunakan token 'IDRX' untuk transaksi ini).\n" 
+            f"   (Catatan: Gunakan token {req.token} untuk transaksi ini).\n" 
             f"2. Pastikan transaksi berhasil dan berikan hash transaksinya."
         )
 

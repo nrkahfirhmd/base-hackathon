@@ -1,12 +1,5 @@
 from pydantic import BaseModel, Field
 from typing import Optional
-
-class InfoProfile(BaseModel):
-    wallet_address: str
-    name: str
-    description: str = None
-    image_url: Optional[str] = None  
-    image_path: Optional[str] = None 
     
 class VerificationRequest(BaseModel):
     wallet_address: str

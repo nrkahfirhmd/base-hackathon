@@ -1,8 +1,9 @@
 import requests
 from decimal import getcontext
 from web3 import Web3
+import base64
+from fastapi import UploadFile
 from database import supabase
-from schemas import InfoProfile
 from config import settings
 from agent import _fetch_live_apy_logic, _ai_recommend_protocol, _calculate_profit, _pool, _erc20, _from_units, _get_days_from_now
 
@@ -39,37 +40,43 @@ def verify_info(address: str) -> str:
     
     return response.data
 
-def upsert_info_data(profile: InfoProfile) -> dict:
-    data = {
-        "wallet_address": profile.wallet_address,
-        "name": profile.name,
-        "description": profile.description
-    }
+async def upsert_info_data(wallet: str, name: str, desc: str, image_file: UploadFile) -> dict:
     image_url = None
-    if hasattr(profile, "image_path") and profile.image_path:
+    
+    if image_file:
         try:
-            with open(profile.image_path, "rb") as img_file:
-                import base64
-                encoded = base64.b64encode(img_file.read()).decode("utf-8")
+            file_content = await image_file.read()
+
+            encoded_image = base64.b64encode(file_content).decode("utf-8")
+
             imgbb_api = "https://api.imgbb.com/1/upload"
             payload = {
                 "key": settings.IMAGE_API_KEY,
-                "image": encoded
+                "image": encoded_image
             }
+
             resp = requests.post(imgbb_api, data=payload, timeout=10)
             resp.raise_for_status()
+
             result = resp.json()
             image_url = result["data"]["url"]
+
         except Exception as e:
-            raise RuntimeError(f"Failed to upload image to ImgBB: {str(e)}")
-    elif hasattr(profile, "image_url") and profile.image_url:
-        image_url = profile.image_url
+            raise RuntimeError(f"Gagal upload ke ImgBB: {str(e)}")
+    
+    data = {
+        "wallet_address": wallet,
+        "name": name,
+        "description": desc
+    }
+    
     if image_url:
         data["image_url"] = image_url
     try:
         response = supabase.table("infos").upsert(data).execute()
         if not response.data:
-            raise RuntimeError("Failed to upsert info")
+            data["is_verified"] = False
+            return data
         return response.data[0]
     except Exception as e:
         raise RuntimeError(f"Supabase error: {str(e)}")

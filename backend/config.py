@@ -47,5 +47,7 @@ class Settings:
     
     IDRX_ADDRESS: str = os.getenv("MOCK_IDRX_ADDRESS")
     USDC_ADDRESS: str = os.getenv("MOCK_USDC_ADDRESS")
+    
+    IMAGE_API_KEY: str = os.getenv("IMAGE_API_KEY")
 
 settings = Settings()

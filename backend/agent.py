@@ -306,9 +306,9 @@ def check_user_balance(target_address: str, token_symbol: str = "ETH"):
             return f"Saldo wallet {target_address} adalah: {eth} ETH"
         
         token_contract_address = None
-        if token_symbol.upper() == "USDC":
+        if token_symbol.upper() == "MUSDC":
             token_contract_address = settings.USDC_ADDRESS
-        elif token_symbol.upper() == "IDRX":
+        elif token_symbol.upper() == "MIDRX":
             token_contract_address = settings.IDRX_ADDRESS
             
         if not token_contract_address:
@@ -361,18 +361,18 @@ def _get_token_config(token: str):
             "symbol": "WETH",
             "is_eth": True
         }
-    elif key == "idrx":
+    elif key == "midrx":
         return {
             "address": settings.IDRX_ADDRESS,
             "decimals": 18,
-            "symbol": "IDRX",
+            "symbol": "mIDRX",
             "is_eth": False
         }
-    elif key == "usdc":
+    elif key == "musdc":
         return {
             "address": settings.USDC_ADDRESS,
             "decimals": 6,
-            "symbol": "USDC",
+            "symbol": "mUSDC",
             "is_eth": False
         }
     raise RuntimeError("Unsupported token; only eth supported")
@@ -435,6 +435,7 @@ def _wait_for_tx(tx_hash):
         return receipt
     except Exception as e:
         print(f"Error waiting for tx: {e}")
+        raise e
     
 @tool
 def lending_deposit(protocol: str, amount: float, token: str):
@@ -505,7 +506,7 @@ def lending_deposit(protocol: str, amount: float, token: str):
         raise RuntimeError(f"Failed to build deposit tx: {str(e)}")
     
     deposit_hash = _send_tx(deposit_tx)
-    
+    _wait_for_tx(deposit_hash)
     pools_data = _fetch_live_apy_logic()
     pool_info = next((p for p in pools_data if p["protocol"] == proto_key), None)
     
