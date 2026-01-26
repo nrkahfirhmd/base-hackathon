@@ -6,6 +6,7 @@ import CryptoItem from '../components/ui/cards/CryptoItemCard';
 import BottomNav from '../components/ui/BottonNav';
 import { sdk } from "@farcaster/miniapp-sdk";
 import { useEffect } from "react";
+import { useWalletGuard } from './hooks/useWalletGuard';
 
 const cryptoAssets = [
   { id: 1, name: "Ethereum", symbol: "ETH", price: "5.092,92", change: "+11.02%", color: "bg-blue-500" },
@@ -16,9 +17,15 @@ const cryptoAssets = [
 ];
 
 export default function Home() {
+  const { isConnected } = useWalletGuard();
+  
   useEffect(() => {
     sdk.actions.ready();
   }, []);
+  
+  if (!isConnected) {
+    return null; // Show nothing while redirecting
+  }
   return (
     <main className="min-h-screen bg-[#1B1E34] text-white p-6 pb-28">
 
