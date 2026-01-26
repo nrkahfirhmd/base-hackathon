@@ -1,10 +1,5 @@
 from pydantic import BaseModel, Field
 from typing import Optional
-
-class InfoProfile(BaseModel):
-    wallet_address: str
-    name: str
-    description: str = None
     
 class VerificationRequest(BaseModel):
     wallet_address: str
@@ -22,6 +17,7 @@ class InfoResponse(BaseModel):
     name: str
     description: str
     is_verified: bool
+    image_url: Optional[str] = None
     
 class DepositRequest(BaseModel):
     protocol: str  
@@ -126,10 +122,27 @@ class LendingWithdrawResponse(BaseModel):
     total_received: float
     message: str
 
-
 class LendingProject(BaseModel):
     protocol: str
     apy: float
     tvl: float
     symbol: str
     pool_id: str
+    
+class AddHistoryRequest(BaseModel):
+    sender: str 
+    receiver: str 
+    amount: float 
+    token: str
+    tx_hash: str
+
+class AddHistoryResponse(BaseModel):
+    from_address: str
+    to_address: str
+    amount: float
+    token_symbol: str
+    tx_hash: str
+    status: str
+    
+class ViewHistoryRequest(BaseModel):
+    wallet: str

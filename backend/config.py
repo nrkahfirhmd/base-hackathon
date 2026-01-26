@@ -44,5 +44,10 @@ class Settings:
     EXPLORER_BASE: str = os.getenv("EXPLORER_BASE", "https://sepolia.basescan.org/tx/")
     
     GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY")
+    
+    IDRX_ADDRESS: str = os.getenv("MOCK_IDRX_ADDRESS")
+    USDC_ADDRESS: str = os.getenv("MOCK_USDC_ADDRESS")
+    
+    IMAGE_API_KEY: str = os.getenv("IMAGE_API_KEY")
 
 settings = Settings()
