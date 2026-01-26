@@ -2,21 +2,24 @@
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useState } from "react";
+import { useDisconnect, useAccount } from "wagmi";
 import BottomNav from "@/components/ui/BottonNav";
 import SecondaryButton from "@/components/ui/buttons/SecondaryButton";
 
 export default function ProfilePage() {
   const router = useRouter();
+  const { disconnect } = useDisconnect();
 
   // Mock user data
   const [username, setUsername] = useState("dzikribm");
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [tempUsername, setTempUsername] = useState("");
   const [isWalletVerified, setIsWalletVerified] = useState(false);
+  const { address} = useAccount();
 
   const userInfo = {
     Username: username,
-    walletAddress: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+    walletAddress: address,
   };
 
   const handleEditUsername = () => {
@@ -37,8 +40,8 @@ export default function ProfilePage() {
   };
 
   const handleLogout = () => {
-    // Logic logout
     console.log("Logging out...");
+    disconnect();
     router.push("/connect");
   };
 
@@ -107,47 +110,48 @@ export default function ProfilePage() {
                     )}
 
                     {/* Wallet Address */}
-                    <div className="w-full bg-[#1B1E34] rounded-lg p-4 flex items-center justify-between">
-                        <div className="flex-1 overflow-hidden">
-                            <p className="text-gray-400 text-xs mb-1">Wallet Address</p>
-                            <p className="text-white text-sm font-mono truncate">{userInfo.walletAddress}</p>
-                        </div>
-                        <div className="ml-2">
-                            {isWalletVerified ? (
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                                </svg>
-                            ) : (
-                                <button
-                                    onClick={async () => {
-                                        try {
-                                            const response = await fetch('/api/verify-wallet', { // bisa di ganti sesuai endpoint
-                                                method: 'POST',
-                                                headers: {
-                                                    'Content-Type': 'application/json',
-                                                },
-                                                body: JSON.stringify({
-                                                    walletAddress: userInfo.walletAddress,
-                                                }),
-                                            });
-                                            const data = await response.json();
-                                            if (data.verified) {
-                                                setIsWalletVerified(true);
+                    <div className="w-full bg-[#1B1E34] rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-2">
+                            <p className="text-gray-400 text-xs">Wallet Address</p>
+                            <div>
+                                {isWalletVerified ? (
+                                    <><span className="text-blue-500 text-xs font-medium flex items-center gap-1">Verified</span><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500">
+                                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                      <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                                  </svg></>
+                                ) : (
+                                    <button
+                                        onClick={async () => {
+                                            try {
+                                                const response = await fetch('/api/verify', { // bisa di ganti sesuai endpoint
+                                                    method: 'POST',
+                                                    headers: {
+                                                        'Content-Type': 'application/json',
+                                                    },
+                                                    body: JSON.stringify({
+                                                        walletAddress: userInfo.walletAddress,
+                                                    }),
+                                                });
+                                                const data = await response.json();
+                                                if (data.verified) {
+                                                    setIsWalletVerified(true);
+                                                }
+                                            } catch (error) {
+                                                console.error('Verification failed:', error);
                                             }
-                                        } catch (error) {
-                                            console.error('Verification failed:', error);
-                                        }
-                                    }}
-                                    className="hover:opacity-70 transition-opacity"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6B7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                                    </svg>
-                                </button>
-                            )}
+                                        }}
+                                        className="hover:opacity-70 transition-opacity flex items-center gap-1"
+                                    >
+                                        <span className="text-red-500 text-xs font-medium">Not Verified</span>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500">
+                                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                                        </svg>
+                                    </button>
+                                )}
+                            </div>
                         </div>
+                        <p className="text-white text-sm font-mono break-all">{userInfo.walletAddress}</p>
                     </div>
                 </div>
             </div>
