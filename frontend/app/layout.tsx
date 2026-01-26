@@ -12,14 +12,29 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "DeQRypt",
-  description: "Pay with Crypto via QR",
-  metadataBase: new URL("https://https://deqrypt.vercel.app/.com"),
-  other: {
-    "base:app_id": "69763e273a92926b661fd516",
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+    return {
+        title: "DeQRypt",
+        description: "Pay with Crypto via QR",
+        other: {
+        'base:app_id': '69763dba3a92926b661fd515',
+        'fc:miniapp': JSON.stringify({
+            version: 'next',
+            imageUrl: 'https://deqrypt.vercel.app/embed-image',
+            button: {
+                title: `Launch DeQRypt`,
+                action: {
+                    type: 'launch_miniapp',
+                    name: 'DeQRypt',
+                    url: 'https://deqrypt.vercel.app',
+                    splashImageUrl: 'https://deqrypt.vercel.app/splash-image',
+                    splashBackgroundColor: '#000000',
+                },
+            },
+        }),
+        },
+    };
+}
 
 export const viewport: Viewport = {
   width: "device-width",
