@@ -11,13 +11,12 @@ function withValidProperties(
 }
 
 export async function GET() {
-  const URL = "https://deqrypt.vercel.app/";
+  const URL = process.env.NEXT_PUBLIC_BASE_APP_URL;
   return Response.json({
     accountAssociation: {
-      // these will be added in step 5
-      header: "",
-      payload: "",
-      signature: "",
+    "header": "eyJmaWQiOjIwNjIyODIsInR5cGUiOiJhdXRoIiwia2V5IjoiMHhGMjg2NzIxRTg0Yzk1ZkRGYTQ4Q2UyZGY5ZkYwMTkwODcxNjI3QzhFIn0",
+    "payload": "eyJkb21haW4iOiJkZXFyeXB0LnZlcmNlbC5hcHAifQ",
+    "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEFv0NvrYkCjymu5L-OEbVGuFvtW74eOYW7K7af3Q_1OTmJLzeBpbMqZ1xKwb9dvLG37etrnvHDErki4gNs-HnKvGwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
     },
     miniapp: {
       version: "1",
