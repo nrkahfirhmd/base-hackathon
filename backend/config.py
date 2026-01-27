@@ -4,6 +4,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Settings:
+    LENDING_POOL_ADDRESS_MIDRX: str = os.getenv("LENDING_POOL_ADDRESS_MIDRX")
+    LENDING_POOL_ADDRESS_MUSDC: str = os.getenv("LENDING_POOL_ADDRESS_MUSDC")
+    LENDING_POOL_ADDRESS_ETH: str = os.getenv("LENDING_POOL_ADDRESS_ETH")
     PROJECT_NAME: str = "DeFi Yield Bot API"
     VERSION: str = "1.0.0"
     
