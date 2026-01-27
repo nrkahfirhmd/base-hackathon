@@ -7,6 +7,8 @@ import BottomNav from '../components/ui/BottonNav';
 import { sdk } from "@farcaster/miniapp-sdk";
 import { useEffect } from "react";
 import { useWalletGuard } from './hooks/useWalletGuard';
+import { useProfile } from './hooks/useProfile';
+import { useAccount , useBalance } from 'wagmi';
 
 
 const cryptoAssets = [
@@ -17,11 +19,6 @@ const cryptoAssets = [
   { id: 5, name: "Bitcoin", symbol: "BTC", price: "1.092,92", change: "+21.02%" },
 ];
 
-const info = {
-  username: "dzikribm",
-  avatar: "/profile-pic.svg",
-};
-
 const balanceInfo = {
   balance: "IDRX 452.57",
   profit: "IDRX 123.13",
@@ -31,6 +28,9 @@ const balanceInfo = {
 
 export default function Home() {
   const { isConnected } = useWalletGuard();
+  const { profile } = useProfile();
+  const { address } = useAccount();
+  const { data: balanceData } = useBalance({ address: address,   token: '0x71894d7dE68cDC34eA756A7e557d3bd0b0086FAA' });
 
   useEffect(() => {
     sdk.actions.ready();
@@ -40,11 +40,12 @@ export default function Home() {
     return null;
   }
   return (
+    console.log(balanceData),
     <main className="min-h-screen bg-[#1B1E34] text-white p-6 pb-28">
 
-      <Header avatar={info.avatar} username={info.username} />
+      <Header avatar="/profile-pic.svg" username={profile?.username || "Anonymous"} />
       <BalanceCard
-        balance={balanceInfo.balance}
+        balance={"IDRX " + balanceData?.formatted }
         profit={balanceInfo.profit}
         growthRate={balanceInfo.growthRate}
         balanceGrowth={balanceInfo.balanceGrowth}
