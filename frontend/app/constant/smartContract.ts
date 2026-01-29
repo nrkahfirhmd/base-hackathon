@@ -1,9 +1,10 @@
 // constants.ts
 export const CHAIN_ID = 84532; // Base Sepolia
 
-export const ROUTER = "0x3F0d70EBC91eaEA590d18e4a8dC258993581EDec";
-export const USDC = "0x2b76EC0FfFd7BB736d29931e1dd16Bf6285740eB";
-export const IDRX = "0x71894d7dE68cDC34eA756A7e557d3bd0b0086FAA";
+export const USDC = "0x453f6011493c1Cb55a7cB3182B48931654490bE3";
+export const IDRX = "0x1d094171C5c56692c602DcF4580385eeeFEd0A5d";
+export const ROUTER = "0xC9Af2FA70A49610b7B4357b696BA168642AEd6AA";
+export const TREASURY = "0xE949b7064FEB13497cd5E67170a1106F100B45Cb";
 
 // Minimal ABI
 export const ROUTER_ABI = [
