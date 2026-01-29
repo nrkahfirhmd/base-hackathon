@@ -42,7 +42,8 @@ const CryptoItemCard = ({ asset }: { asset: CryptoAsset }) => {
       </div>
 
       <div className="text-right">
-        <p className="text-white text-sm font-semibold">IDRX {asset.price}</p>
+        {/* Menggunakan toFixed(3) untuk membatasi 3 angka di belakang koma */}
+        <p className="text-white text-sm font-semibold">IDRX {Number(asset.price).toFixed(3)}</p>
         <p className="text-green-400 text-xs">{asset.change}</p>
       </div>
     </div>
