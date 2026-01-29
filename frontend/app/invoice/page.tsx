@@ -8,6 +8,17 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 
+const invoiceInfo = {
+  invoiceNumber: '#INV-2026001',
+  date: 'Friday, January 2, 2026',
+  transferMethod: 'BTC',
+  from: 'Dzikri#2301',
+  to: 'Danis#2115',
+  gasFee: 'IDRX 10.25',
+  transferAmount: 'IDRX 201.15',
+  total: 'IDRX 210.35'
+};
+
 export default function Invoice() {
     const router = useRouter();
     const [showSuccess, setShowSuccess] = useState(true);
@@ -67,14 +78,14 @@ export default function Invoice() {
                         <div className="max-w-2xl mx-auto grow w-full">
                             {/* Invoice Card */}
                             <InvoiceCard
-                                invoiceNumber="#INV-2026001"
-                                date="Friday, January 2, 2026"
-                                transferMethod="BTC"
-                                from="Dzikri#2301"
-                                to="Danis#2115"
-                                gasFee="IDRX 10.25"
-                                transferAmount="IDRX 201.15"
-                                total="IDRX 210.35"
+                                invoiceNumber={invoiceInfo.invoiceNumber}
+                                date={invoiceInfo.date}
+                                transferMethod={invoiceInfo.transferMethod}
+                                from={invoiceInfo.from}
+                                to={invoiceInfo.to}
+                                gasFee={invoiceInfo.gasFee}
+                                transferAmount={invoiceInfo.transferAmount}
+                                total={invoiceInfo.total}
                             />
                         </div>
 

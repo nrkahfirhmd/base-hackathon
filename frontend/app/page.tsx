@@ -4,31 +4,66 @@ import Header from '../components/ui/Header';
 import BalanceCard from '../components/ui/cards/BalanceCard';
 import CryptoItem from '../components/ui/cards/CryptoItemCard';
 import BottomNav from '../components/ui/BottonNav';
+import { sdk } from "@farcaster/miniapp-sdk";
+import { useEffect } from "react";
+import { useWalletGuard } from './hooks/useWalletGuard';
+import { useProfile } from './hooks/useProfile';
+import { useCryptoBalances, toCryptoAsset } from './hooks/useCryptoBalances';
 
-const cryptoAssets = [
-  { id: 1, name: "Ethereum", symbol: "ETH", price: "5.092,92", change: "+11.02%", color: "bg-blue-500" },
-  { id: 2, name: "Bitcoin", symbol: "BTC", price: "1.092,92", change: "+21.02%", color: "bg-orange-500" },
-  { id: 3, name: "Ethereum", symbol: "ETH", price: "5.092,92", change: "+11.02%", color: "bg-blue-500" },
-  { id: 4, name: "Bitcoin", symbol: "BTC", price: "1.092,92", change: "+21.02%", color: "bg-orange-500" },
-  { id: 5, name: "Bitcoin", symbol: "BTC", price: "1.092,92", change: "+21.02%", color: "bg-orange-500" },
-];
+const balanceInfo = {
+  profit: "IDRX 123.13",
+  growthRate: "5.7%",
+  balanceGrowth: "+15%",
+};
 
 export default function Home() {
+  const { isConnected } = useWalletGuard();
+  const { profile } = useProfile();
+  const { cryptoAssets, assetsWithBalance, idrxBalance, isLoading } = useCryptoBalances();
+
+  useEffect(() => {
+    sdk.actions.ready();
+  }, []);
+
+  if (!isConnected) {
+    return null;
+  }
+
   return (
     <main className="min-h-screen bg-[#1B1E34] text-white p-6 pb-28">
+      <Header avatar="/profile-pic.svg" username={profile?.username || "Anonymous"} />
+      <BalanceCard
+        balance={"IDRX " + idrxBalance}
+        profit={balanceInfo.profit}
+        growthRate={balanceInfo.growthRate}
+        balanceGrowth={balanceInfo.balanceGrowth}
+      />
+      
+      {/* Loading State */}
+      {isLoading && (
+        <div className="text-center text-gray-400 py-4">Loading balances...</div>
+      )}
 
-      <Header />
-      <BalanceCard />
-      {/* List Container */}
+      {/* Assets with Balance */}
+      {assetsWithBalance.length > 0 && (
+        <div className="mt-4">
+          <h2 className="text-gray-400 text-sm mb-2">Your Assets</h2>
+          {assetsWithBalance.map((asset) => (
+            <CryptoItem key={asset.id} asset={toCryptoAsset(asset)} />
+          ))}
+        </div>
+      )}
+
+      {/* All Available Assets */}
       <div className="mt-4">
+        <h2 className="text-gray-400 text-sm mb-2">All Tokens</h2>
         {cryptoAssets.map((asset) => (
-          <CryptoItem key={asset.id} asset={asset} />
-        ))}
-        {cryptoAssets.map((asset) => (
-          <CryptoItem key={`dup-${asset.id}`} asset={asset} />
+          <CryptoItem key={`all-${asset.id}`} asset={toCryptoAsset(asset)} />
         ))}
       </div>
+      
       <BottomNav />
     </main>
   );
 }
+

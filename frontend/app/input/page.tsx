@@ -63,8 +63,8 @@ export default function Input() {
         <div className="w-full max-w-md mx-auto">
           <InputConfimationButton
             onSuccess={() => {
-              // Navigasi ke halaman tampilkan QR setelah konfirmasi swipe
-              router.push("/showqr");
+              // Kirim amount ke URL, misal: /showqr?amount=10
+              router.push(`/showqr?amount=${amount}`);
             }}
             text="Swipe to Show QR Code"
           />

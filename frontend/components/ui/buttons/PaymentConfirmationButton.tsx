@@ -9,9 +9,16 @@ import {
 } from "framer-motion";
 import Image from "next/image";
 
+// Import Logika Blockchain
+import { payWithApprove } from "@/app/constant/pay";
+import { USDC } from "@/app/constant/smartContract";
+import { JsonRpcSigner } from "ethers";
+
 interface PaymentConfirmationButtonProps {
   onSuccess: () => void;
-  amount: string;
+  amount: string; // Nominal yang sudah dikonversi ke USDC
+  recipient: string; // Alamat merchant dari QR
+  signer: JsonRpcSigner | undefined;
   currency: "BTC" | "ETH";
   onCurrencyChange: (coin: "BTC" | "ETH") => void;
   className?: string;
@@ -20,26 +27,48 @@ interface PaymentConfirmationButtonProps {
 const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
   onSuccess,
   amount,
+  recipient,
+  signer,
   currency,
   onCurrencyChange,
   className = "",
 }) => {
   const [isComplete, setIsComplete] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false); // State Loading internal
 
   const x = useMotionValue(0);
-
-  // Opacity teks akan menghilang saat pill digeser mendekati area kanan
   const textOpacity = useTransform(x, [0, 140], [1, 0]);
 
-  const handleDragEnd = (_: any, info: any) => {
+  const handleDragEnd = async (_: any, info: any) => {
     if (Math.abs(info.offset.x) > 5) {
       setIsMenuOpen(false);
     }
 
-    if (info.offset.x > 180) {
-      setIsComplete(true);
-      onSuccess();
+    // Cek jika digeser melewati batas konfirmasi (180px)
+    if (info.offset.x > 180 && !isLoading && signer && recipient) {
+      setIsLoading(true);
+
+      try {
+        // EKSEKUSI TRANSAKSI KE BLOCKCHAIN
+        await payWithApprove(
+          {
+            tokenIn: USDC,
+            recipient: recipient,
+            amountHuman: amount,
+            referenceIdStr: `INV-${Date.now()}`,
+          },
+          signer,
+        );
+
+        setIsComplete(true);
+        onSuccess();
+      } catch (err) {
+        console.error("Payment Failed:", err);
+        x.set(0); // Kembalikan ke posisi awal jika gagal
+      } finally {
+        setIsLoading(false);
+      }
     } else {
       x.set(0);
     }
@@ -49,16 +78,15 @@ const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
     <div
       className={`relative w-full max-w-md h-[72px] rounded-2xl 
         bg-linear-to-b from-[#281a45] via-[#3b2a6e] to-[#6a3eb7]
-        p-2 flex items-center shadow-2xl border border-white/10 ${className}`}
+        p-2 flex items-center shadow-2xl border border-white/10 ${className} 
+        ${isLoading ? "opacity-70 pointer-events-none" : ""}`}
     >
-    
       <motion.div
         style={{ opacity: textOpacity }}
         className="absolute inset-0 flex items-center justify-end pr-10 text-white font-semibold text-lg pointer-events-none tracking-wide"
       >
-        Swipe to Confirm
+        {isLoading ? "Processing..." : "Swipe to Confirm"}
       </motion.div>
-
 
       <AnimatePresence>
         {isMenuOpen && (
@@ -96,34 +124,38 @@ const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
 
       {/* 3. Handle Geser */}
       <motion.div
-        drag="x"
+        drag={isLoading ? false : "x"} // Kunci drag jika sedang loading
         dragConstraints={{ left: 0, right: 230 }}
         dragElastic={0.02}
         dragMomentum={false}
         style={{ x }}
         onDragEnd={handleDragEnd}
-        onTap={() => setIsMenuOpen(!isMenuOpen)}
+        onTap={() => !isLoading && setIsMenuOpen(!isMenuOpen)}
         animate={isComplete ? { x: 300, opacity: 0 } : {}}
-        /* Hapus transition-all jika masih terasa berat saat digeser */
         className="relative z-10 h-14 pl-4 pr-3 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center gap-2 cursor-grab active:cursor-grabbing shadow-lg border border-white/20 hover:bg-white/20 transition-colors"
       >
         {/* Ikon Koin */}
         <div className="w-8 h-8 relative flex items-center justify-center pointer-events-none">
-          <Image
-            src={`/${currency.toLowerCase()}.svg`}
-            alt={currency}
-            width={32}
-            height={32}
-          />
+          {isLoading ? (
+            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          ) : (
+            <Image
+              src={`/${currency.toLowerCase()}.svg`}
+              alt={currency}
+              width={32}
+              height={32}
+            />
+          )}
         </div>
 
-        {/* Informasi Nominal */}
+        {/* Informasi Nominal - TETAP MENJAGA ICON PANAH */}
         <div className="flex flex-col leading-tight pointer-events-none">
           <span className="text-white font-bold text-lg tracking-tight">
             {amount}
           </span>
           <span className="text-white/50 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1">
             {currency}
+            {/* PANAH DROPUP ANDA DI SINI */}
             <svg
               className={`w-2 h-2 transition-transform ${isMenuOpen ? "rotate-180" : ""}`}
               fill="none"
@@ -140,7 +172,7 @@ const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
           </span>
         </div>
 
-        {/* 4. Ikon Panah */}
+        {/* 4. Ikon Panah Geser */}
         <div className="ml-1 text-white/80 pointer-events-none flex items-center">
           <svg
             width="20"
