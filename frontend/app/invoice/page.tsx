@@ -5,6 +5,7 @@ import SecondaryButton from "@/components/ui/buttons/SecondaryButton";
 import InvoiceCard from "@/components/ui/cards/InvoiceCard";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
+import { useOnChainInvoice } from "../hooks/useOnChainInvoice";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 
@@ -13,31 +14,15 @@ export default function Invoice() {
   const searchParams = useSearchParams();
   const [showSuccess, setShowSuccess] = useState(true);
 
-  // 1. Ambil data dari URL Parameter (Data On-Chain)
-  const amountOut = searchParams.get("amountOut") || "0";
-  const amountIn = searchParams.get("amountIn") || "0";
-  const referenceId = searchParams.get("ref") || "UNKNOWN";
-  const payer = searchParams.get("from") || "0x000...000";
-  const recipient = searchParams.get("to") || "0x000...000";
-  const tokenSymbol = searchParams.get("token") || "USDC";
+  // Ambil invoiceId dari URL (misal ?invoiceId=...)
+  const invoiceId = searchParams.get("invoiceId") || "";
+  const { getInvoice } = useOnChainInvoice();
+  const [dynamicInvoice, setDynamicInvoice] = useState<any>(null);
 
-  // 2. Format data untuk ditampilkan di InvoiceCard
-  const dynamicInvoice = {
-    invoiceNumber: `#${referenceId}`,
-    date: new Date().toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    }),
-    transferMethod: tokenSymbol,
-    // Shorten address untuk tampilan UI yang bersih
-    from: `${payer.slice(0, 6)}...${payer.slice(-4)}`,
-    to: `${recipient.slice(0, 6)}...${recipient.slice(-4)}`,
-    gasFee: "Paid by Network", // Gas fee biasanya sudah terpotong di pengirim
-    transferAmount: `${tokenSymbol} ${amountIn}`,
-    total: `IDRX ${amountOut}`,
-  };
+  useEffect(() => {
+    if (!invoiceId) return;
+    getInvoice(invoiceId).then(setDynamicInvoice);
+  }, [invoiceId, getInvoice]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -105,16 +90,20 @@ export default function Invoice() {
 
             {/* Main Content */}
             <div className="grow w-full">
-              <InvoiceCard
-                invoiceNumber={dynamicInvoice.invoiceNumber}
-                date={dynamicInvoice.date}
-                transferMethod={dynamicInvoice.transferMethod}
-                from={dynamicInvoice.from}
-                to={dynamicInvoice.to}
-                gasFee={dynamicInvoice.gasFee}
-                transferAmount={dynamicInvoice.transferAmount}
-                total={dynamicInvoice.total}
-              />
+              {dynamicInvoice ? (
+                <InvoiceCard
+                  invoiceNumber={dynamicInvoice.invoiceNumber}
+                  date={dynamicInvoice.date}
+                  transferMethod={dynamicInvoice.transferMethod}
+                  from={`${dynamicInvoice.from.slice(0, 6)}...${dynamicInvoice.from.slice(-4)}`}
+                  to={`${dynamicInvoice.to.slice(0, 6)}...${dynamicInvoice.to.slice(-4)}`}
+                  gasFee={dynamicInvoice.gasFee}
+                  transferAmount={dynamicInvoice.transferAmount}
+                  total={dynamicInvoice.total}
+                />
+              ) : (
+                <div className="text-center py-8">Loading invoice from blockchain...</div>
+              )}
             </div>
 
             {/* Action Buttons */}
