@@ -7,10 +7,12 @@ import {
   Wallet,
 } from '@coinbase/onchainkit/wallet';
 import Image from 'next/image';
+import {useProfile} from "@/app/hooks/useProfile";
 
 export default function WalletDemo() {
   const router = useRouter();
   const { isConnected } = useAccount();
+  const { profile, isLoading: isLoadingProfile, setProfile } = useProfile();
 
   useEffect(() => {
     if (isConnected) {
