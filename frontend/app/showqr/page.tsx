@@ -1,19 +1,48 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useAccount } from "wagmi";
+import { useRef, useCallback } from "react"; // Tambahkan ini
+import { toPng } from "html-to-image"; // Tambahkan ini
 import ShowQrOverlay from "@/components/ui/ShowQrOverlay";
 import ScanQrNavigation from "../../components/ui/ScanQrNav";
 import SecondaryButton from "@/components/ui/buttons/SecondaryButton";
+import { useProfile } from "@/app/hooks/useProfile";
 
 export default function ShowQrPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { address } = useAccount();
+  const { profile } = useProfile();
+
+  // Ref untuk menangkap elemen kartu QR
+  const qrRef = useRef<HTMLDivElement>(null);
+
+  const amount = searchParams.get("amount") || "0";
+  const paymentUrl = `${window.location.origin}/payment?amount=${amount}&recipient=${address}`;
+
+  // Fungsi untuk mendownload gambar
+  const handleDownload = useCallback(() => {
+    if (qrRef.current === null) return;
+
+    toPng(qrRef.current, { cacheBust: true })
+      .then((dataUrl) => {
+        const link = document.createElement("a");
+        link.download = `DeQRypt-Payment-${amount}.png`;
+        link.href = dataUrl;
+        link.click();
+      })
+      .catch((err) => {
+        console.error("Gagal mendownload gambar:", err);
+      });
+  }, [qrRef, amount]);
 
   return (
     <div className="relative flex flex-col min-h-screen bg-[#1B1E34] font-sans overflow-y-auto">
-      {/* Tombol Back */}
+      {/* Tombol Back tetap sama */}
       <div className="absolute top-8 left-6 z-50">
         <button
-          onClick={() => router.push("/")}
+          onClick={() => router.push("/input")}
           className="p-2 bg-black/20 hover:bg-black/40 backdrop-blur-md rounded-lg transition-colors text-white shadow-lg"
         >
           <svg
@@ -32,23 +61,25 @@ export default function ShowQrPage() {
         </button>
       </div>
 
-      {/* Kontainer Utama Konten */}
       <div className="flex flex flex-col items-center justify-center p-6 pt-24 pb-32">
-        {/* Wrapper ini yang menentukan lebar Card dan Button secara bersamaan */}
         <div className="w-full max-w-sm flex flex-col">
-          {/* Komponen Card */}
-          <ShowQrOverlay />
+          {/* Bungkus komponen dengan div ref */}
+          <div ref={qrRef} className="bg-[#1B1E34]">
+            <ShowQrOverlay
+              amount={amount}
+              paymentUrl={paymentUrl}
+              merchantName={profile.username || "DeQRypt Merchant"}
+            />
+          </div>
 
-          {/* Tombol Save  */}
           <div className="w-full">
-            <SecondaryButton onClick={() => {}}>
+            <SecondaryButton onClick={handleDownload}>
               Save To Gallery
             </SecondaryButton>
           </div>
         </div>
       </div>
 
-      {/* Navigasi Bawah */}
       <ScanQrNavigation />
     </div>
   );
