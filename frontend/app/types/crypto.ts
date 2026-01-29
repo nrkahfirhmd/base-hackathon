@@ -4,5 +4,4 @@ export interface CryptoAsset {
   symbol: string;
   price: string;
   change: string;
-  color: string;
 }

@@ -2,43 +2,71 @@
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useState } from "react";
+import { useDisconnect, useAccount } from "wagmi";
 import BottomNav from "@/components/ui/BottonNav";
 import SecondaryButton from "@/components/ui/buttons/SecondaryButton";
+import { useProfile, useUpdateUsername, useVerifyWallet } from "@/app/hooks/useProfile";
 
 export default function ProfilePage() {
   const router = useRouter();
+  const { disconnect } = useDisconnect();
+  const { address } = useAccount();
 
-  // Mock user data
-  const [username, setUsername] = useState("dzikribm");
+  const { profile, isLoading: isLoadingProfile, setProfile } = useProfile();
+  const { updateUsername, isUpdating, error: updateError, setError } = useUpdateUsername();
+  const { verifyWallet, isVerifying, error: verifyError } = useVerifyWallet();
+
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [tempUsername, setTempUsername] = useState("");
-  const [isWalletVerified, setIsWalletVerified] = useState(false);
-
-  const userInfo = {
-    Username: username,
-    walletAddress: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
-  };
+  const [verifyMessage, setVerifyMessage] = useState<string | null>(null);
 
   const handleEditUsername = () => {
-    setTempUsername(username);
+    setTempUsername(profile.username);
+    setError(null);
     setIsEditingUsername(true);
   };
 
-  const handleSaveUsername = () => {
-    if (tempUsername.trim()) {
-      setUsername(tempUsername.trim());
+  const handleSaveUsername = async () => {
+    const newUsername = tempUsername.trim();
+
+    if (newUsername === profile.username) {
+      setIsEditingUsername(false);
+      return;
     }
-    setIsEditingUsername(false);
+
+    const result = await updateUsername(newUsername);
+
+    if (result.success) {
+      setProfile({ ...profile, username: newUsername });
+      setIsEditingUsername(false);
+    }
   };
 
   const handleCancelEdit = () => {
     setIsEditingUsername(false);
     setTempUsername("");
+    setError(null);
+  };
+
+  const handleVerifyWallet = async () => {
+    setVerifyMessage(null);
+    const result = await verifyWallet();
+    
+    if (result.success) {
+      // Verification is processed in background
+      setVerifyMessage(result.message || 'AI is verifying your wallet. Please refresh in a few seconds.');
+      
+      // Optional: Auto-refresh after 5 seconds
+      setTimeout(() => {
+        window.location.reload();
+      }, 5000);
+    } else {
+      setVerifyMessage(result.message || 'Verification failed');
+    }
   };
 
   const handleLogout = () => {
-    // Logic logout
-    console.log("Logging out...");
+    disconnect();
     router.push("/connect");
   };
 
@@ -64,7 +92,16 @@ export default function ProfilePage() {
         <h1 className="text-xl font-bold">Profile</h1>
         <div className="w-8"></div>
       </div>
-
+        
+      {isLoadingProfile ? (
+        <div className="flex flex-col items-center justify-center mt-32">
+          <svg className="animate-spin h-12 w-12 text-purple-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+        </div>
+      ) : (
+            <>
             {/* Profile Info */}
             <div className="bg-[#252A42] rounded-2xl p-6 mb-6">
                 <div className="flex flex-col items-center">
@@ -74,29 +111,51 @@ export default function ProfilePage() {
 
                     {/* Username with Edit */}
                     {isEditingUsername ? (
-                        <div className="flex items-center gap-2 mb-3">
-                            <input
-                                type="text"
-                                value={tempUsername}
-                                onChange={(e) => setTempUsername(e.target.value)}
-                                className="bg-[#1B1E34] text-white px-3 py-1 rounded-lg text-center font-bold"
-                                autoFocus
-                            />
-                            <button onClick={handleSaveUsername} className="text-green-500 p-1">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <polyline points="20 6 9 17 4 12"></polyline>
-                                </svg>
-                            </button>
-                            <button onClick={handleCancelEdit} className="text-red-500 p-1">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                                </svg>
-                            </button>
+                        <div className="w-full">
+                            <div className="flex items-center justify-center gap-2 mb-2">
+                                <input
+                                    type="text"
+                                    value={tempUsername}
+                                    onChange={(e) => setTempUsername(e.target.value)}
+                                    className="bg-[#1B1E34] text-white px-3 py-1 rounded-lg text-center font-bold"
+                                    autoFocus
+                                    disabled={isUpdating}
+                                />
+                                <button
+                                    onClick={handleSaveUsername}
+                                    className="text-green-500 p-1 disabled:opacity-50"
+                                    disabled={isUpdating}
+                                >
+                                    {isUpdating ? (
+                                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                    ) : (
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <polyline points="20 6 9 17 4 12"></polyline>
+                                        </svg>
+                                    )}
+                                </button>
+                                <button
+                                    onClick={handleCancelEdit}
+                                    className="text-red-500 p-1 disabled:opacity-50"
+                                    disabled={isUpdating}
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
+                                </button>
+                            </div>
+                            {/* Error Message */}
+                            {updateError && (
+                                <p className="text-red-500 text-xs text-center mt-1">{updateError}</p>
+                            )}
                         </div>
                     ) : (
                         <div className="flex items-center gap-2 mb-3">
-                            <h2 className="text-xl font-bold">{userInfo.Username}</h2>
+                            <h2 className="text-xl font-bold">{profile.username || 'Anonymous'}</h2>
                             <button onClick={handleEditUsername} className="text-gray-400 hover:text-white p-1">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -107,55 +166,55 @@ export default function ProfilePage() {
                     )}
 
                     {/* Wallet Address */}
-                    <div className="w-full bg-[#1B1E34] rounded-lg p-4 flex items-center justify-between">
-                        <div className="flex-1 overflow-hidden">
-                            <p className="text-gray-400 text-xs mb-1">Wallet Address</p>
-                            <p className="text-white text-sm font-mono truncate">{userInfo.walletAddress}</p>
+                    <div className="w-full bg-[#1B1E34] rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-2">
+                            <p className="text-gray-400 text-xs">Wallet Address</p>
+                            <div>
+                                {profile.isVerified ? (
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-blue-500 text-xs font-medium">Verified</span>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500">
+                                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                                        </svg>
+                                    </div>
+                                ) : (
+                                    <button
+                                        onClick={handleVerifyWallet}
+                                        className="hover:opacity-70 transition-opacity flex items-center gap-1 disabled:opacity-50"
+                                        disabled={isVerifying}
+                                    >
+                                        <span className="text-red-500 text-xs font-medium">
+                                            {isVerifying ? 'Verifying...' : 'Not Verified'}
+                                        </span>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500">
+                                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                                        </svg>
+                                    </button>
+                                )}
+                            </div>
                         </div>
-                        <div className="ml-2">
-                            {isWalletVerified ? (
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                                </svg>
-                            ) : (
-                                <button
-                                    onClick={async () => {
-                                        try {
-                                            const response = await fetch('/api/verify-wallet', { // bisa di ganti sesuai endpoint
-                                                method: 'POST',
-                                                headers: {
-                                                    'Content-Type': 'application/json',
-                                                },
-                                                body: JSON.stringify({
-                                                    walletAddress: userInfo.walletAddress,
-                                                }),
-                                            });
-                                            const data = await response.json();
-                                            if (data.verified) {
-                                                setIsWalletVerified(true);
-                                            }
-                                        } catch (error) {
-                                            console.error('Verification failed:', error);
-                                        }
-                                    }}
-                                    className="hover:opacity-70 transition-opacity"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6B7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                                    </svg>
-                                </button>
-                            )}
-                        </div>
+                        <p className="text-white text-sm font-mono break-all">{address}</p>
+                        
+                        {/* Verification Message */}
+                        {verifyMessage && (
+                            <div className={`mt-2 p-2 rounded text-xs ${
+                                verifyError ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'
+                            }`}>
+                                {verifyMessage}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
 
-      {/* Logout Button */}
-      <SecondaryButton onClick={handleLogout} className="w-full">
-        Disconnect Wallet
-      </SecondaryButton>
+            {/* Logout Button */}
+            <SecondaryButton onClick={handleLogout} className="w-full">
+              Disconnect Wallet
+            </SecondaryButton>
+          </>
+        )}
 
       <BottomNav />
     </main>
