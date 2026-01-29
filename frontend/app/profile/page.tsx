@@ -1,11 +1,12 @@
 "use client";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useDisconnect, useAccount } from "wagmi";
 import BottomNav from "@/components/ui/BottonNav";
 import SecondaryButton from "@/components/ui/buttons/SecondaryButton";
-import { useProfile, useUpdateUsername, useVerifyWallet } from "@/app/hooks/useProfile";
+import PrimaryButton from "@/components/ui/buttons/PrimaryButton";
+import { useProfile, useUpdateProfile, useVerifyWallet } from "@/app/hooks/useProfile";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -13,12 +14,21 @@ export default function ProfilePage() {
   const { address } = useAccount();
 
   const { profile, isLoading: isLoadingProfile, setProfile } = useProfile();
-  const { updateUsername, isUpdating, error: updateError, setError } = useUpdateUsername();
+  const { updateProfile, isUpdating, error: updateError, setError } = useUpdateProfile();
   const { verifyWallet, isVerifying, error: verifyError } = useVerifyWallet();
 
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [tempUsername, setTempUsername] = useState("");
   const [verifyMessage, setVerifyMessage] = useState<string | null>(null);
+
+  const isNewUser = profile.username === "Unknown";
+
+  useEffect(() => {
+    if (isNewUser && !isLoadingProfile) {
+      setIsEditingUsername(true);
+      setTempUsername("");
+    }
+  }, [isNewUser, isLoadingProfile]);
 
   const handleEditUsername = () => {
     setTempUsername(profile.username);
@@ -29,37 +39,45 @@ export default function ProfilePage() {
   const handleSaveUsername = async () => {
     const newUsername = tempUsername.trim();
 
-    if (newUsername === profile.username) {
+    if (newUsername.length < 3) {
+      setError("Username must be at least 3 characters");
+      return;
+    }
+
+    if (newUsername === profile.username && !isNewUser) {
       setIsEditingUsername(false);
       return;
     }
 
-    const result = await updateUsername(newUsername);
+    const result = await updateProfile({ 
+      name: newUsername 
+    });
 
     if (result.success) {
       setProfile({ ...profile, username: newUsername });
       setIsEditingUsername(false);
+      if (isNewUser) {
+        setTimeout(() => {
+          router.push("/");
+        }, 1500);
+      }
     }
   };
 
   const handleCancelEdit = () => {
-    setIsEditingUsername(false);
-    setTempUsername("");
-    setError(null);
+    if (!isNewUser) {
+      setIsEditingUsername(false);
+      setTempUsername("");
+      setError(null);
+    }
   };
 
   const handleVerifyWallet = async () => {
     setVerifyMessage(null);
     const result = await verifyWallet();
-    
+
     if (result.success) {
-      // Verification is processed in background
-      setVerifyMessage(result.message || 'AI is verifying your wallet. Please refresh in a few seconds.');
-      
-      // Optional: Auto-refresh after 5 seconds
-      setTimeout(() => {
-        window.location.reload();
-      }, 5000);
+      setVerifyMessage(result.message || 'AI is verifying your wallet');
     } else {
       setVerifyMessage(result.message || 'Verification failed');
     }
@@ -74,7 +92,11 @@ export default function ProfilePage() {
     <main className="min-h-screen bg-[#1B1E34] text-white p-6 pb-28">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
-        <button onClick={() => router.back()} className="p-2">
+        <button 
+          onClick={() => router.back()} 
+          className="p-2"
+          disabled={isNewUser}
+        >
           <svg
             xmlns="http://www.w3.org/2000/svg"
             width="24"
@@ -85,13 +107,25 @@ export default function ProfilePage() {
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
+            className={isNewUser ? "opacity-50 cursor-not-allowed" : ""}
           >
             <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
         </button>
-        <h1 className="text-xl font-bold">Profile</h1>
+        <h1 className="text-xl font-bold">
+          Profile
+        </h1>
         <div className="w-8"></div>
       </div>
+
+      {/* New User Notice */}
+      {isNewUser && !isLoadingProfile && (
+        <div className="mb-6">
+          <p className="text-red-500 text-center text-sm font-medium">
+            Please set your username!
+          </p>
+        </div>
+      )}
         
       {isLoadingProfile ? (
         <div className="flex flex-col items-center justify-center mt-32">
@@ -117,14 +151,16 @@ export default function ProfilePage() {
                                     type="text"
                                     value={tempUsername}
                                     onChange={(e) => setTempUsername(e.target.value)}
-                                    className="bg-[#1B1E34] text-white px-3 py-1 rounded-lg text-center font-bold"
+                                    placeholder="Enter username..."
+                                    className="bg-[#1B1E34] text-white px-4 py-2 rounded-lg flex-1 font-semibold focus:outline-none"
                                     autoFocus
                                     disabled={isUpdating}
                                 />
                                 <button
                                     onClick={handleSaveUsername}
-                                    className="text-green-500 p-1 disabled:opacity-50"
-                                    disabled={isUpdating}
+                                    className="text-green-500 p-2 hover:bg-green-500/20 rounded-lg disabled:opacity-50 transition-colors"
+                                    disabled={isUpdating || !tempUsername.trim() || tempUsername.trim().length < 3}
+                                    title="Save"
                                 >
                                     {isUpdating ? (
                                         <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -137,16 +173,19 @@ export default function ProfilePage() {
                                         </svg>
                                     )}
                                 </button>
-                                <button
-                                    onClick={handleCancelEdit}
-                                    className="text-red-500 p-1 disabled:opacity-50"
-                                    disabled={isUpdating}
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                                    </svg>
-                                </button>
+                                {!isNewUser && (
+                                  <button
+                                      onClick={handleCancelEdit}
+                                      className="text-red-500 p-2 hover:bg-red-500/20 rounded-lg disabled:opacity-50 transition-colors"
+                                      disabled={isUpdating}
+                                      title="Cancel"
+                                  >
+                                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                          <line x1="18" y1="6" x2="6" y2="18"></line>
+                                          <line x1="6" y1="6" x2="18" y2="18"></line>
+                                      </svg>
+                                  </button>
+                                )}
                             </div>
                             {/* Error Message */}
                             {updateError && (
@@ -181,26 +220,47 @@ export default function ProfilePage() {
                                 ) : (
                                     <button
                                         onClick={handleVerifyWallet}
-                                        className="hover:opacity-70 transition-opacity flex items-center gap-1 disabled:opacity-50"
+                                        className="flex items-center gap-1 transition-opacity cursor-pointer"
                                         disabled={isVerifying}
                                     >
-                                        <span className="text-red-500 text-xs font-medium">
+                                        <span className={`text-xs font-medium ${isVerifying ? 'text-gray-400' : 'text-red-500'}`}>
                                             {isVerifying ? 'Verifying...' : 'Not Verified'}
                                         </span>
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500">
-                                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                                        </svg>
+                                        {isVerifying ? (
+                                            <svg className="animate-spin h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                        ) : (
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500">
+                                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                                            </svg>
+                                        )}
                                     </button>
                                 )}
                             </div>
                         </div>
-                        <p className="text-white text-sm font-mono break-all">{address}</p>
-                        
+                        <div className="flex items-center justify-between gap-2">
+                            <p className="text-white text-sm font-mono break-all flex-1">{address}</p>
+                            <button
+                                onClick={() => {
+                                    navigator.clipboard.writeText(address || '');
+                                }}
+                                className="text-gray-400 p-2 flex-shrink-0 transition-colors cursor-pointer"
+                                title="Copy address"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+                                    <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+                                </svg>
+                            </button>
+                        </div>
+
                         {/* Verification Message */}
-                        {verifyMessage && (
+                        {verifyMessage && !isVerifying && (
                             <div className={`mt-2 p-2 rounded text-xs ${
-                                verifyError ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'
+                                verifyError ? ' text-red-400' : ' text-blue-400'
                             }`}>
                                 {verifyMessage}
                             </div>
@@ -210,9 +270,11 @@ export default function ProfilePage() {
             </div>
 
             {/* Logout Button */}
-            <SecondaryButton onClick={handleLogout} className="w-full">
-              Disconnect Wallet
-            </SecondaryButton>
+            {!isNewUser && (
+              <SecondaryButton onClick={handleLogout} className="w-full">
+                Disconnect Wallet
+              </SecondaryButton>
+            )}
           </>
         )}
 

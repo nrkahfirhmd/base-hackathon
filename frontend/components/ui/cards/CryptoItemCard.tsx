@@ -1,9 +1,15 @@
 import { CryptoAsset } from "@/app/types/crypto";
 import Image from "next/image";
 
+const CUSTOM_ICONS: Record<string, string> = {
+  'IDRX': '/IDRX-Logo.png',
+};
+
 const CryptoItemCard = ({ asset }: { asset: CryptoAsset }) => {
-  // Get icon URL from cryptocurrency-icons CDN
   const getIconUrl = (symbol: string) => {
+    if (CUSTOM_ICONS[symbol.toUpperCase()]) {
+      return CUSTOM_ICONS[symbol.toUpperCase()];
+    }
     const iconSymbol = symbol.toLowerCase();
     return `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${iconSymbol}.png`;
   };

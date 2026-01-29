@@ -1,19 +1,21 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAccount } from 'wagmi';
-import Image from 'next/image';
-import { AccountConnect } from '@/components/wallet/AccountConnect';
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useAccount } from "wagmi";
+import Image from "next/image";
+import { AccountConnect } from "@/components/wallet/AccountConnect";
+import { useProfile } from "@/app/hooks/useProfile";
 
 export default function ConnectPage() {
   const router = useRouter();
   const { isConnected } = useAccount();
+  const { profile, isLoading: isLoadingProfile, setProfile } = useProfile();
 
   // Logic redirect: Jika sudah konek, lempar ke dashboard/home
   useEffect(() => {
     if (isConnected) {
-      router.push('/');
+      router.push("/");
     }
   }, [isConnected, router]);
 
@@ -36,7 +38,9 @@ export default function ConnectPage() {
           </div>
         </div>
         <h1 className="text-3xl font-bold mb-2 tracking-tight">Welcome Back</h1>
-        <p className="text-gray-400 text-sm">Connect your wallet to get started</p>
+        <p className="text-gray-400 text-sm">
+          Connect your wallet to get started
+        </p>
       </div>
 
       {/* Gunakan Komponen Modular Kita */}
