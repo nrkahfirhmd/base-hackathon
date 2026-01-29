@@ -4,6 +4,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Settings:
+    LENDING_POOL_ADDRESS_MIDRX: str = os.getenv("LENDING_POOL_ADDRESS_MIDRX")
+    LENDING_POOL_ADDRESS_MUSDC: str = os.getenv("LENDING_POOL_ADDRESS_MUSDC")
+    LENDING_POOL_ADDRESS_ETH: str = os.getenv("LENDING_POOL_ADDRESS_ETH")
     PROJECT_NAME: str = "DeFi Yield Bot API"
     VERSION: str = "1.0.0"
     
@@ -44,5 +47,10 @@ class Settings:
     EXPLORER_BASE: str = os.getenv("EXPLORER_BASE", "https://sepolia.basescan.org/tx/")
     
     GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY")
+    
+    IDRX_ADDRESS: str = os.getenv("MOCK_IDRX_ADDRESS")
+    USDC_ADDRESS: str = os.getenv("MOCK_USDC_ADDRESS")
+    
+    IMAGE_API_KEY: str = os.getenv("IMAGE_API_KEY")
 
 settings = Settings()
