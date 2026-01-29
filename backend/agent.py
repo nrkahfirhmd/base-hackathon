@@ -359,23 +359,26 @@ def _get_token_config(token: str):
             "address": settings.WETH_ADDRESS,
             "decimals": 18,
             "symbol": "WETH",
-            "is_eth": True
+            "is_eth": True,
+            "pool": getattr(settings, "LENDING_POOL_ADDRESS_ETH", None)
         }
     elif key == "midrx":
         return {
             "address": settings.IDRX_ADDRESS,
             "decimals": 18,
             "symbol": "mIDRX",
-            "is_eth": False
+            "is_eth": False,
+            "pool": getattr(settings, "LENDING_POOL_ADDRESS_MIDRX", None)
         }
     elif key == "musdc":
         return {
             "address": settings.USDC_ADDRESS,
             "decimals": 6,
             "symbol": "mUSDC",
-            "is_eth": False
+            "is_eth": False,
+            "pool": getattr(settings, "LENDING_POOL_ADDRESS_MUSDC", None)
         }
-    raise RuntimeError("Unsupported token; only eth supported")
+    raise RuntimeError("Unsupported token; only mIDRX, mUSDC, eth supported")
 
 def _to_units(amount: float, decimals: int) -> int:
     return int(Decimal(str(amount)) * (Decimal(10) ** decimals))
@@ -390,9 +393,14 @@ def _weth():
     return get_web3_connection().eth.contract(address=Web3.to_checksum_address(settings.WETH_ADDRESS), abi=WETH_ABI)
 
 def _pool():
-    if not settings.LENDING_POOL_ADDRESS:
-        raise RuntimeError("LENDING_POOL_ADDRESS not set")
-    return get_web3_connection().eth.contract(address=Web3.to_checksum_address(settings.LENDING_POOL_ADDRESS), abi=LENDING_POOL_ABI)
+    raise RuntimeError("Gunakan _pool_token(token) untuk pool mIDRX/mUSDC/ETH.")
+
+def _pool_token(token: str):
+    conf = _get_token_config(token)
+    pool_addr = conf.get("pool")
+    if not pool_addr:
+        raise RuntimeError(f"Pool address untuk token {token} tidak ditemukan di env.")
+    return get_web3_connection().eth.contract(address=Web3.to_checksum_address(pool_addr), abi=LENDING_POOL_ABI)
 
 def _build_tx(base_from: str, nonce: int):
     w3 = get_web3_connection()
@@ -472,7 +480,10 @@ def lending_deposit(protocol: str, amount: float, token: str):
     proto_key = protocol.lower()
     protocol_info = None
     
-    target_address = Web3.to_checksum_address(settings.LENDING_POOL_ADDRESS)
+    token_pool_addr = token_conf.get("pool")
+    if not token_pool_addr:
+        raise RuntimeError(f"Pool address untuk token {token} tidak ditemukan di env.")
+    target_address = Web3.to_checksum_address(token_pool_addr)
     
     user_balance = token_contract.functions.balanceOf(sender).call()
     if user_balance < amount_units:
@@ -492,16 +503,10 @@ def lending_deposit(protocol: str, amount: float, token: str):
 
     print(f"Depositing to {protocol}...")
     try:
-        if protocol_info:
-            protocol_contract = get_web3_connection().eth.contract(address=target_address, abi=LENDING_POOL_ABI)
-            deposit_tx = protocol_contract.functions.deposit(amount_units, sender).build_transaction(
-                {**_build_tx(sender, nonce), "gas": 300000} 
-            )
-        else:
-            pool = _pool()
-            deposit_tx = pool.functions.deposit(amount_units, sender).build_transaction(
-                {**_build_tx(sender, nonce), "gas": 300000}
-            )
+        pool = _pool_token(token)
+        deposit_tx = pool.functions.deposit(amount_units, sender).build_transaction(
+            {**_build_tx(sender, nonce), "gas": 300000}
+        )
     except Exception as e:
         raise RuntimeError(f"Failed to build deposit tx: {str(e)}")
     
