@@ -27,6 +27,7 @@ from services import (
     get_lending_recommendation,
     lending_get_positions_with_profit,
     get_lending_projects,
+    get_market_rates
 )
 from services import verify_info, get_main_history, log_transaction
 
@@ -261,5 +262,17 @@ def transaction_history_endpoint(req: ViewHistoryRequest):
             
         return {"status": "success", "data": formatted_history}
 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@router.get("/tokens/rates")
+def get_token_prices():
+    """
+    Get realtime crypto prices (ETH, USDC, IDRX).
+    Cached for 60 seconds to prevent rate limiting.
+    """
+    try:
+        data = get_market_rates()
+        return {"status": "success", "data": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
