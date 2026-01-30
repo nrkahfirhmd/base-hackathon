@@ -1,48 +1,46 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useFetchOnChainInvoice } from "../hooks/useFetchOnChainInvoice";
-import { useCallback } from "react";
 import { Scanner } from "@yudiel/react-qr-scanner";
 import ScanQrOverlay from "@/components/ui/ScanQrOverlay";
 import ShowQrNavigation from "../../components/ui/ShowQrNav";
 
 export default function Qr() {
   const router = useRouter();
-  const { fetchInvoice } = useFetchOnChainInvoice();
 
   const handleScan = (result: any) => {
     const rawValue = result?.[0]?.rawValue;
 
-    if (!rawValue) return;
-    console.log("QR Terdeteksi:", rawValue);
+    if (rawValue) {
+      console.log("QR Terdeteksi:", rawValue);
 
-    // Cek apakah QR mengandung invoiceId (dalam URL ?invoiceId=...)
-    let invoiceId = "";
-    try {
-      const url = new URL(rawValue);
-      invoiceId = url.searchParams.get("invoiceId") || "";
-    } catch {
-      // Fallback: jika QR hanya invoiceId mentah
-      if (/^0x[0-9a-fA-F]{64}$/.test(rawValue)) invoiceId = rawValue;
-    }
-
-    if (invoiceId) {
-      // Fetch invoice dari blockchain
       try {
-        const invoice = await fetchInvoice(invoiceId);
-        if (invoice && invoice.invoiceId) {
-          // Redirect ke halaman invoice dengan id
-          router.push(`/invoice?invoiceId=${invoiceId}`);
-          return;
+        // 1. Parsing teks QR menjadi objek URL
+        const url = new URL(rawValue);
+
+        // 2. Ambil Query Params saja (misal: ?amount=100&recipient=0x...)
+        const searchParams = url.search;
+
+        // 3. Paksa arahkan ke /payment, bukan url.pathname
+        if (searchParams) {
+          router.push(`/payment${searchParams}`);
         } else {
-          alert("Invoice tidak ditemukan di blockchain.");
+          // Jika QR tidak punya params, tetap lempar ke payment
+          router.push(`/payment`);
         }
-      } catch (e) {
-        alert("Gagal mengambil data invoice dari blockchain.");
+      } catch (error) {
+        // Fallback jika QR bukan format URL (misal hanya teks mentah)
+        console.error(
+          "Format QR tidak valid sebagai URL, mencoba parsing manual...",
+        );
+
+        if (rawValue.includes("?")) {
+          const manualParams = rawValue.substring(rawValue.indexOf("?"));
+          router.push(`/payment${manualParams}`);
+        } else {
+          console.error("QR tidak mengandung parameter data.");
+        }
       }
-    } else {
-      alert("QR tidak mengandung invoiceId yang valid.");
     }
   };
 
@@ -81,7 +79,6 @@ export default function Qr() {
             video: { width: "100%", height: "100%", objectFit: "cover" },
           }}
           components={{
-            audio: false,
             finder: false,
           }}
         />
