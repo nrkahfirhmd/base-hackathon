@@ -3,33 +3,97 @@
 import PrimaryButton from "@/components/ui/buttons/PrimaryButton";
 import SecondaryButton from "@/components/ui/buttons/SecondaryButton";
 import InvoiceCard from "@/components/ui/cards/InvoiceCard";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
-
-const invoiceInfo = {
-  invoiceNumber: "#INV-2026001",
-  date: "Friday, January 2, 2026",
-  transferMethod: "BTC",
-  from: "Dzikri#2301",
-  to: "Danis#2115",
-  gasFee: "IDRX 10.25",
-  transferAmount: "IDRX 201.15",
-  total: "IDRX 210.35",
-};
+import { useInvoice, FormattedInvoice, InvoiceStatus } from "@/app/hooks/useInvoice";
 
 export default function Invoice() {
   const router = useRouter();
-  const [showSuccess, setShowSuccess] = useState(true);
+  const searchParams = useSearchParams();
+  const invoiceIdParam = searchParams.get("invoiceId") || "";
 
+  const { getFormattedInvoice, payInvoice, isLoading, error } = useInvoice();
+
+  const [invoice, setInvoice] = useState<FormattedInvoice | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [isPaying, setIsPaying] = useState(false);
+
+  // Fetch invoice data dari blockchain
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setShowSuccess(false);
-    }, 1000);
+    if (!invoiceIdParam) return;
 
-    return () => clearTimeout(timer);
-  }, []);
+    getFormattedInvoice(invoiceIdParam).then((data) => {
+      if (data) {
+        setInvoice(data);
+        // Jika invoice sudah dibayar, tampilkan success animation
+        if (data.status === "Paid") {
+          setShowSuccess(true);
+          setTimeout(() => setShowSuccess(false), 1500);
+        }
+      }
+    });
+  }, [invoiceIdParam, getFormattedInvoice]);
+
+  // Handler untuk bayar invoice
+  const handlePayInvoice = async () => {
+    if (!invoiceIdParam || isPaying) return;
+
+    setIsPaying(true);
+    const result = await payInvoice(invoiceIdParam);
+
+    if (result.success) {
+      setShowSuccess(true);
+      // Refresh invoice data
+      const updated = await getFormattedInvoice(invoiceIdParam);
+      if (updated) setInvoice(updated);
+      setTimeout(() => setShowSuccess(false), 1500);
+    } else {
+      alert(`Pembayaran gagal: ${result.error}`);
+    }
+    setIsPaying(false);
+  };
+
+  // Handler share invoice
+  const handleShare = async () => {
+    if (navigator.share && invoice) {
+      try {
+        await navigator.share({
+          title: `Invoice ${invoice.invoiceNumber}`,
+          text: `Invoice ${invoice.invoiceNumber} - ${invoice.total} ${invoice.tokenSymbol}`,
+          url: window.location.href,
+        });
+      } catch (err) {
+        console.log("Share cancelled");
+      }
+    } else {
+      // Fallback: copy link
+      navigator.clipboard.writeText(window.location.href);
+      alert("Link copied to clipboard!");
+    }
+  };
+
+  // Loading state
+  if (!invoice && !error) {
+    return (
+      <div className="min-h-screen bg-[#1B1E34] text-white flex items-center justify-center">
+        <p className="animate-pulse">Loading invoice...</p>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error || !invoice) {
+    return (
+      <div className="min-h-screen bg-[#1B1E34] text-white flex flex-col items-center justify-center p-6">
+        <p className="text-red-400 mb-4">Invoice tidak ditemukan</p>
+        <SecondaryButton onClick={() => router.push("/")}>
+          Kembali ke Home
+        </SecondaryButton>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#1B1E34] text-white overflow-hidden">
@@ -88,33 +152,56 @@ export default function Invoice() {
             <div className="max-w-2xl mx-auto grow w-full">
               {/* Invoice Card */}
               <InvoiceCard
-                invoiceNumber={invoiceInfo.invoiceNumber}
-                date={invoiceInfo.date}
-                transferMethod={invoiceInfo.transferMethod}
-                from={invoiceInfo.from}
-                to={invoiceInfo.to}
-                gasFee={invoiceInfo.gasFee}
-                transferAmount={invoiceInfo.transferAmount}
-                total={invoiceInfo.total}
+                invoiceNumber={invoice.invoiceNumber}
+                date={invoice.date}
+                transferMethod={invoice.tokenSymbol}
+                from={`${invoice.payer.slice(0, 6)}...${invoice.payer.slice(-4)}`}
+                to={`${invoice.merchant.slice(0, 6)}...${invoice.merchant.slice(-4)}`}
+                gasFee={`${invoice.tokenSymbol} ${invoice.fee}`}
+                transferAmount={`${invoice.tokenSymbol} ${invoice.amount}`}
+                total={`${invoice.tokenSymbol} ${invoice.total}`}
               />
+
+              {/* Status Badge */}
+              <div className="text-center mt-4">
+                {invoice.status === "Pending" && (
+                  <span className="bg-yellow-500/20 text-yellow-400 px-4 py-2 rounded-full text-sm">
+                    ⏳ Menunggu Pembayaran
+                  </span>
+                )}
+                {invoice.status === "Paid" && (
+                  <span className="bg-green-500/20 text-green-400 px-4 py-2 rounded-full text-sm">
+                    ✅ Sudah Dibayar
+                  </span>
+                )}
+                {invoice.status === "Cancelled" && (
+                  <span className="bg-red-500/20 text-red-400 px-4 py-2 rounded-full text-sm">
+                    ❌ Dibatalkan
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Action Buttons */}
             <div className="space-y-3 max-w-2xl mx-auto w-full pb-4">
-              <SecondaryButton
-                onClick={() => {
-                  /* Implement share functionality */
-                }}
-              >
+              <SecondaryButton onClick={handleShare}>
                 Share Invoice
               </SecondaryButton>
-              <PrimaryButton
-                onClick={() => {
-                  /* Implement done payment functionality */
-                }}
-              >
-                Done Payment
-              </PrimaryButton>
+
+              {invoice.status === "Pending" && (
+                <PrimaryButton
+                  onClick={handlePayInvoice}
+                  disabled={isLoading || isPaying}
+                >
+                  {isPaying ? "Processing..." : "Pay Now"}
+                </PrimaryButton>
+              )}
+
+              {invoice.status === "Paid" && (
+                <PrimaryButton onClick={() => router.push("/")}>
+                  Done
+                </PrimaryButton>
+              )}
             </div>
           </div>
         )}

@@ -8,38 +8,52 @@ import ShowQrNavigation from "../../components/ui/ShowQrNav";
 export default function Qr() {
   const router = useRouter();
 
+  /**
+   * Handler saat QR berhasil di-scan
+   * QR bisa berisi:
+   * 1. URL dengan invoiceId: https://app.com/invoice?invoiceId=5
+   * 2. URL dengan payment params: https://app.com/payment?amount=1000&recipient=0x...
+   */
   const handleScan = (result: any) => {
     const rawValue = result?.[0]?.rawValue;
+    if (!rawValue) return;
 
-    if (rawValue) {
-      console.log("QR Terdeteksi:", rawValue);
+    console.log("QR Terdeteksi:", rawValue);
 
-      try {
-        // 1. Parsing teks QR menjadi objek URL
-        const url = new URL(rawValue);
+    try {
+      const url = new URL(rawValue);
+      const invoiceId = url.searchParams.get("invoiceId");
 
-        // 2. Ambil Query Params saja (misal: ?amount=100&recipient=0x...)
-        const searchParams = url.search;
+      // Jika QR mengandung invoiceId → redirect ke halaman invoice
+      if (invoiceId) {
+        router.push(`/invoice?invoiceId=${invoiceId}`);
+        return;
+      }
 
-        // 3. Paksa arahkan ke /payment, bukan url.pathname
-        if (searchParams) {
-          router.push(`/payment${searchParams}`);
-        } else {
-          // Jika QR tidak punya params, tetap lempar ke payment
-          router.push(`/payment`);
+      // Fallback: redirect ke payment dengan params yang ada
+      const searchParams = url.search;
+      if (searchParams) {
+        router.push(`/payment${searchParams}`);
+      } else {
+        router.push(`/payment`);
+      }
+    } catch {
+      // Fallback jika QR bukan format URL
+      console.error("Format QR tidak valid sebagai URL, mencoba parsing manual...");
+
+      if (rawValue.includes("invoiceId=")) {
+        const match = rawValue.match(/invoiceId=(\d+)/);
+        if (match) {
+          router.push(`/invoice?invoiceId=${match[1]}`);
+          return;
         }
-      } catch (error) {
-        // Fallback jika QR bukan format URL (misal hanya teks mentah)
-        console.error(
-          "Format QR tidak valid sebagai URL, mencoba parsing manual...",
-        );
+      }
 
-        if (rawValue.includes("?")) {
-          const manualParams = rawValue.substring(rawValue.indexOf("?"));
-          router.push(`/payment${manualParams}`);
-        } else {
-          console.error("QR tidak mengandung parameter data.");
-        }
+      if (rawValue.includes("?")) {
+        const manualParams = rawValue.substring(rawValue.indexOf("?"));
+        router.push(`/payment${manualParams}`);
+      } else {
+        console.error("QR tidak mengandung parameter data.");
       }
     }
   };
