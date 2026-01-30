@@ -2,12 +2,19 @@ import requests
 from decimal import getcontext
 from web3 import Web3
 import base64
+import time
 from fastapi import UploadFile
 from database import supabase
 from config import settings
 from agent import _fetch_live_apy_logic, _ai_recommend_protocol, _calculate_profit, _pool, _erc20, _from_units, _get_days_from_now
 
 getcontext().prec = 50
+
+PRICE_CACHE = {
+    "last_updated": 0,
+    "data": None,
+    "ttl": 60
+}
 
 def get_usdc_rate() -> float:
     COINGECKO_URL = "https://api.coingecko.com/api/v3/simple/price?ids=usd-coin&vs_currencies=idr"
@@ -229,3 +236,71 @@ def get_main_history(wallet: str):
         .execute()
     
     return response.data
+
+def get_market_rates():
+    """
+    Mengambil harga Realtime (IDRX, USDC, ETH) dari CoinGecko.
+    Return: Dict harga dalam IDR & USD + Change 24h.
+    """
+
+    global PRICE_CACHE
+    current_time = time.time()
+    
+    if PRICE_CACHE["data"] and (current_time - PRICE_CACHE["last_updated"] < PRICE_CACHE["ttl"]):
+        print("USING CACHE DATA")
+        return PRICE_CACHE["data"]
+    
+    try:
+        url = "https://api.coingecko.com/api/v3/simple/price"
+        params = {
+            "ids": "ethereum,usd-coin,idrx",
+            "vs_currencies": "idr,usd",
+            "include_24hr_change": "true"
+        }
+        
+        response = requests.get(url, params=params, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        
+        formatted_data = [
+            {
+                "symbol": "ETH",
+                "name": "Ethereum",
+                "price_idr": data["ethereum"]["idr"],
+                "price_usd": data["ethereum"]["usd"],
+                "change_24h": data["ethereum"]["idr_24h_change"],
+                "icon": "https://assets.coingecko.com/coins/images/279/small/ethereum.png"
+            },
+            {
+                "symbol": "USDC",
+                "name": "USD Coin",
+                "price_idr": data["usd-coin"]["idr"],
+                "price_usd": data["usd-coin"]["usd"],
+                "change_24h": data["usd-coin"]["idr_24h_change"],
+                "icon": "https://assets.coingecko.com/coins/images/6319/small/USD_Coin_icon.png"
+            },
+            {
+                "symbol": "IDRX",
+                "name": "IDR X",
+                "price_idr": data["idrx"]["idr"],
+                "price_usd": data["idrx"]["usd"],
+                "change_24h": data["idrx"]["idr_24h_change"],
+                "icon": "https://assets.coingecko.com/coins/images/28362/small/idrx_logo.png"
+            }
+        ]
+        
+        PRICE_CACHE["data"] = formatted_data
+        PRICE_CACHE["last_updated"] = current_time
+        
+        return formatted_data
+    except Exception as e:
+        print(f"GAGAL FETCH COINGECKO: {e}")
+        
+        return [
+            {"symbol": "ETH", "name": "Ethereum", "price_idr": 42000000,
+                "price_usd": 2700, "change_24h": 2.5, "icon": ""},
+            {"symbol": "USDC", "name": "USD Coin", "price_idr": 15800,
+                "price_usd": 1.0, "change_24h": 0.1, "icon": ""},
+            {"symbol": "IDRX", "name": "IDR X", "price_idr": 1,
+                "price_usd": 0.000063, "change_24h": 0.0, "icon": ""}
+        ]
