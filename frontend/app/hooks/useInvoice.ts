@@ -90,9 +90,20 @@ export function useInvoice() {
 
       try {
         const contract = getContract();
-        const amountWei = parseEther(amount);
+        
+        // HACKATHON DEMO: Treat input as IDR and convert to small ETH
+        // Rate: 1 IDR = 0.0000001 ETH
+        // Example: 10,000 IDR -> 0.001 ETH
+        // Example: 10 IDR -> 0.000001 ETH
+        const scaledAmount = (parseFloat(amount) * 0.0000001).toFixed(18);
+        const amountWei = parseEther(scaledAmount);
         const feeWei = parseEther(fee);
-        console.log('[createInvoice] Parsed values:', { amountWei: amountWei.toString(), feeWei: feeWei.toString() });
+        
+        console.log('[createInvoice] Scaled for Demo:', { 
+          original: amount, 
+          scaled: scaledAmount,
+          wei: amountWei.toString() 
+        });
 
         const tx = await contract.createInvoice(
           merchant,
