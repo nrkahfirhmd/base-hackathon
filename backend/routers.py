@@ -31,7 +31,7 @@ from services import (
 )
 from services import verify_info, get_main_history, log_transaction
 
-from agent import get_agent_executor
+from agent import get_agent_executor, lending_withdraw
 
 router = APIRouter(prefix="/api", tags=["core"])
 
@@ -201,27 +201,27 @@ def lending_info():
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# @router.post("/lending/withdraw", response_model=LendingWithdrawResponse)
-# def lending_withdraw_endpoint(req: LendingWithdrawRequest):
-#     try:
-#         data = lending_withdraw(req.id, req.amount, req.token)
-#         return {
-#             "status": "submitted",
-#             "protocol": data.get("protocol", ""),
-#             "tx_hash": data["tx_hash"],
-#             "explorer_url": data["explorer_url"],
-#             "withdraw_time": data.get("withdraw_time", ""),
-#             "principal": data.get("principal", 0),
-#             "current_profit": data.get("profit", 0),
-#             "current_profit_pct": data.get("profit_pct", 0),
-#             "withdrawn": data.get("withdrawn", 0),
-#             "total_received": data.get("profit", 0) + data.get("withdrawn", 0),
-#             "remaining_amount": data.get("remaining_amount", 0),
-#             "message": data["message"]
-#         }
-#     except Exception as e:
-#         print(f"Error Agent: {str(e)}")
-#         raise HTTPException(status_code=500, detail=f"Agent gagal mengeksekusi: {str(e)}")
+@router.post("/lending/withdraw", response_model=LendingWithdrawResponse)
+def lending_withdraw_endpoint(req: LendingWithdrawRequest):
+    try:
+        data = lending_withdraw(req.id, req.amount, req.token)
+        return {
+            "status": "submitted",
+            "protocol": data.get("protocol", ""),
+            "tx_hash": data["tx_hash"],
+            "explorer_url": data["explorer_url"],
+            "withdraw_time": data.get("withdraw_time", ""),
+            "principal": data.get("principal", 0),
+            "current_profit": data.get("profit", 0),
+            "current_profit_pct": data.get("profit_pct", 0),
+            "withdrawn": data.get("withdrawn", 0),
+            "total_received": data.get("profit", 0) + data.get("withdrawn", 0),
+            "remaining_amount": data.get("remaining_amount", 0),
+            "message": data["message"]
+        }
+    except Exception as e:
+        print(f"Error Agent: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Agent gagal mengeksekusi: {str(e)}")
     
 @router.post("/history/add", response_model=AddHistoryResponse)
 def add_history(req: AddHistoryRequest):
