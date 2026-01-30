@@ -359,6 +359,109 @@ export function useInvoice() {
     }
   }, [getContract]);
 
+  /**
+   * Monitor status invoice secara berkala (polling)
+   * @param invoiceId - ID invoice yang akan dimonitor
+   * @param options - Opsi polling
+   * @param options.onPaid - Callback ketika invoice sudah dibayar
+   * @param options.onCancelled - Callback ketika invoice dibatalkan
+   * @param options.onError - Callback ketika terjadi error
+   * @param options.intervalMs - Interval polling dalam ms (default: 3000)
+   * @param options.maxAttempts - Maksimum percobaan polling (default: 100 = 5 menit)
+   * @returns { stop: () => void } - Fungsi untuk menghentikan polling
+   * @example
+   * const { stop } = watchInvoiceStatus('5', {
+   *   onPaid: (invoice) => {
+   *     console.log('Paid by:', invoice.payer);
+   *     router.push('/success');
+   *   },
+   *   intervalMs: 3000,
+   * });
+   * // Untuk stop manual: stop();
+   */
+  const watchInvoiceStatus = useCallback(
+    (
+      invoiceId: string,
+      options: {
+        onPaid?: (invoice: InvoiceData) => void;
+        onCancelled?: (invoice: InvoiceData) => void;
+        onError?: (error: string) => void;
+        intervalMs?: number;
+        maxAttempts?: number;
+      } = {}
+    ) => {
+      const { onPaid, onCancelled, onError, intervalMs = 3000, maxAttempts = 100 } = options;
+      let attempts = 0;
+      let stopped = false;
+
+      const poll = async () => {
+        if (stopped) return;
+
+        try {
+          const contract = getContract();
+          const data = await contract.getInvoice(invoiceId);
+          const status = Number(data.status) as InvoiceStatus;
+
+          if (status === InvoiceStatus.Paid) {
+            stopped = true;
+            const invoice: InvoiceData = {
+              invoiceId: data.invoiceId.toString(),
+              merchant: data.merchant,
+              payer: data.payer,
+              amount: formatUnits(data.amount, 6),
+              fee: formatUnits(data.fee, 6),
+              createdAt: new Date(Number(data.createdAt) * 1000),
+              paidAt: new Date(Number(data.paidAt) * 1000),
+              status,
+              metadata: JSON.parse(data.metadata || '{}'),
+            };
+            onPaid?.(invoice);
+            return;
+          }
+
+          if (status === InvoiceStatus.Cancelled) {
+            stopped = true;
+            const invoice: InvoiceData = {
+              invoiceId: data.invoiceId.toString(),
+              merchant: data.merchant,
+              payer: data.payer,
+              amount: formatUnits(data.amount, 6),
+              fee: formatUnits(data.fee, 6),
+              createdAt: new Date(Number(data.createdAt) * 1000),
+              paidAt: null,
+              status,
+              metadata: JSON.parse(data.metadata || '{}'),
+            };
+            onCancelled?.(invoice);
+            return;
+          }
+
+          attempts++;
+          if (attempts >= maxAttempts) {
+            stopped = true;
+            onError?.('Polling timeout: max attempts reached');
+            return;
+          }
+
+          setTimeout(poll, intervalMs);
+        } catch (err) {
+          if (!stopped) {
+            onError?.(err instanceof Error ? err.message : 'Failed to fetch invoice status');
+          }
+        }
+      };
+
+      poll();
+
+      return {
+        stop: () => {
+          stopped = true;
+        },
+      };
+    },
+    [getContract]
+  );
+
   return {
     /** Status loading untuk operasi async */
     isLoading,
@@ -374,8 +477,10 @@ export function useInvoice() {
     payInvoiceViaRouter,
     cancelInvoice,
     getTotalInvoices,
+    watchInvoiceStatus,
 
     /** Alamat Invoice contract */
     contractAddress: INVOICE_CONTRACT_ADDRESS,
   };
 }
+
