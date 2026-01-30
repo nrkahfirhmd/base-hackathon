@@ -51,7 +51,7 @@ const BalanceCard = ({
           <p className="text-gray-500 text-sm">Profit</p>
           {/* Warna teks profit mengikuti kondisi isLoss */}
           <p
-            className={`font-semibold ${isLoss ? "text-red-400" : "text-white"}`}
+            className={`font-semibold ${isLoss ? "text-white" : "text-white"}`}
           >
             {profit}
           </p>

@@ -11,33 +11,30 @@ import Image from "next/image";
 import { JsonRpcSigner } from "ethers";
 import { useInvoice } from "@/app/hooks/useInvoice";
 
-interface PaymentConfirmationButtonProps {
-  onSuccess: () => void;
+interface ShowQrConfirmationButtonProps {
+  onSuccess: (invoiceId: string) => void;
   amount: string;
-  recipient: string;
+  merchant: string | undefined;
   signer: JsonRpcSigner | undefined;
-  invoiceId: string | null;
   currency: "USDC" | "IDRX";
   onCurrencyChange: (coin: "USDC" | "IDRX") => void;
   className?: string;
 }
 
-const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
+const ShowQrConfirmationButton: React.FC<ShowQrConfirmationButtonProps> = ({
   onSuccess,
   amount,
-  recipient,
+  merchant,
   signer,
-  invoiceId,
   currency,
   onCurrencyChange,
   className = "",
 }) => {
   const [isComplete, setIsComplete] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-
-  const { payInvoice, isLoading: isBlockchainLoading } = useInvoice();
   const [isInternalLoading, setIsInternalLoading] = useState(false);
 
+  const { createInvoice, isLoading: isBlockchainLoading } = useInvoice();
   const isLoading = isInternalLoading || isBlockchainLoading;
 
   const x = useMotionValue(0);
@@ -46,7 +43,7 @@ const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
   // --- LOGIKA IKON ---
   const getIconUrl = (symbol: string) => {
     if (symbol.toUpperCase() === "IDRX") {
-      return "/IDRX-Logo.png"; // Mengambil dari folder public
+      return "/IDRX-Logo.png"; // Lokal dari folder public
     }
     const iconSymbol = symbol.toLowerCase();
     // Fallback ke GitHub Repo untuk USDC
@@ -58,26 +55,30 @@ const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
       setIsMenuOpen(false);
     }
 
-    if (info.offset.x > 180 && !isLoading && signer && recipient) {
+    if (info.offset.x > 200 && !isLoading && signer && merchant) {
       setIsInternalLoading(true);
 
       try {
-        if (invoiceId) {
-          const result = await payInvoice(invoiceId);
+        const result = await createInvoice({
+          merchant: merchant,
+          amount: amount,
+          tokenType: currency,
+          metadata: {
+            fiatAmount: amount,
+            fiatCurrency: "IDR",
+            createdAt: new Date().toISOString(),
+          },
+        });
 
-          if (result.success) {
-            setIsComplete(true);
-            onSuccess();
-          } else {
-            throw new Error(result.error);
-          }
-        } else {
+        if (result.success && result.invoiceId) {
           setIsComplete(true);
-          onSuccess();
+          onSuccess(result.invoiceId);
+        } else {
+          throw new Error(result.error || "Gagal membuat invoice");
         }
       } catch (err: any) {
-        console.error("Payment Failed:", err);
-        alert("Pembayaran Gagal: " + err.message);
+        console.error("Blockchain Error:", err);
+        alert("Gagal: " + err.message);
         x.set(0);
       } finally {
         setIsInternalLoading(false);
@@ -90,15 +91,15 @@ const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
   return (
     <div
       className={`relative w-full max-w-md h-[72px] rounded-2xl 
-        bg-linear-to-b from-[#281a45] via-[#3b2a6e] to-[#6a3eb7]
+        bg-linear-to-b from-[#1e1b4b] via-[#312e81] to-[#4338ca]
         p-2 flex items-center shadow-2xl border border-white/10 ${className} 
         ${isLoading ? "opacity-70 pointer-events-none" : ""}`}
     >
       <motion.div
         style={{ opacity: textOpacity }}
-        className="absolute inset-0 flex items-center justify-end pr-10 text-white font-semibold text-lg pointer-events-none tracking-wide"
+        className="absolute inset-0 flex items-center justify-end pr-10 text-white/20 font-semibold text-lg pointer-events-none tracking-wide"
       >
-        {isLoading ? "Processing..." : ""}
+        {isLoading ? "Processing Blockchain..." : ""}
       </motion.div>
 
       <AnimatePresence>
@@ -107,7 +108,7 @@ const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
             initial={{ opacity: 0, y: 10, scale: 0.95 }}
             animate={{ opacity: 1, y: -8, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            className="absolute bottom-full left-2 mb-2 w-35 bg-[#281a45]/95 backdrop-blur-2xl rounded-2xl border border-white/10 p-2 shadow-2xl z-50"
+            className="absolute bottom-full left-2 mb-2 w-35 bg-[#1e1b4b]/95 backdrop-blur-2xl rounded-2xl border border-white/10 p-2 shadow-2xl z-50"
           >
             {(["USDC", "IDRX"] as const).map((coin) => (
               <button
@@ -141,15 +142,16 @@ const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
 
       <motion.div
         drag={isLoading ? false : "x"}
-        dragConstraints={{ left: 0, right: 230 }}
+        dragConstraints={{ left: 0, right: 280 }}
         dragElastic={0.02}
         dragMomentum={false}
         style={{ x }}
         onDragEnd={handleDragEnd}
         onTap={() => !isLoading && setIsMenuOpen(!isMenuOpen)}
-        animate={isComplete ? { x: 300, opacity: 0 } : {}}
+        animate={isComplete ? { x: 320, opacity: 0 } : {}}
         className="relative z-10 h-14 pl-4 pr-3 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center gap-2 cursor-grab active:cursor-grabbing shadow-lg border border-white/20 hover:bg-white/20 transition-colors"
       >
+        {/* Ikon Koin Menggunakan Image */}
         <div className="w-8 h-8 relative flex items-center justify-center pointer-events-none">
           {isLoading ? (
             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -169,7 +171,7 @@ const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
 
         <div className="flex flex-col leading-tight pointer-events-none">
           <span className="text-white font-bold text-lg tracking-tight">
-            {amount}
+            {amount || "0"}
           </span>
           <span className="text-white/50 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1">
             {currency}
@@ -208,4 +210,4 @@ const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
   );
 };
 
-export default PaymentConfirmationButton;
+export default ShowQrConfirmationButton;

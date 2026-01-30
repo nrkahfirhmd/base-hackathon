@@ -1,424 +1,224 @@
-'use client';
+"use client";
+import { useCallback, useState } from "react";
+import { useEthersSigner } from "./useEthers";
+import { Contract, parseUnits, formatUnits } from "ethers";
 
-import { useCallback, useState } from 'react';
-import { useEthersSigner } from './useEthers';
-import { Contract, formatEther, parseEther } from 'ethers';
+// 1. ALAMAT KONTRAK UTAMA
+const INVOICE_CONTRACT_ADDRESS = "0x3d025AF3c832f477467149739D5aEedF28C90f6C";
 
-// Contract address - deployed on Base Sepolia
-const INVOICE_CONTRACT_ADDRESS = '0xcE52545F8C6e30B4eE54185074029D54f65F5897';
+// 2. ALAMAT TOKEN (Pastikan keduanya 6 desimal di Base Sepolia)
+const USDC_ADDRESS = "0x453f6011493c1Cb55a7cB3182B48931654490bE3";
+const IDRX_ADDRESS = "0x1d094171C5c56692c602DcF4580385eeeFEd0A5d";
 
 const INVOICE_ABI = [
-  'event InvoiceCreated(uint256 indexed invoiceId, address indexed merchant, uint256 amount, uint256 fee)',
-  'event InvoicePaid(uint256 indexed invoiceId, address indexed payer, uint256 amount)',
-  'event InvoiceCancelled(uint256 indexed invoiceId)',
-  'function getInvoice(uint256 invoiceId) view returns (tuple(uint256 invoiceId, address merchant, address payer, uint256 amount, uint256 fee, uint256 createdAt, uint256 paidAt, uint8 status, string metadata))',
-  'function totalInvoices() view returns (uint256)',
-  'function createInvoice(address merchant, uint256 amount, uint256 fee, string metadata) returns (uint256)',
-  'function payInvoice(uint256 invoiceId) payable',
-  'function cancelInvoice(uint256 invoiceId)',
+  "event InvoiceCreated(uint256 indexed invoiceId, address indexed merchant, address tokenIn, uint256 amountIn)",
+  "event InvoicePaid(uint256 indexed invoiceId, address indexed payer)",
+  "event InvoiceCancelled(uint256 indexed invoiceId)",
+  "function createInvoice(address merchant, address tokenIn, uint256 amountIn, string metadata) returns (uint256)",
+  "function payInvoice(uint256 invoiceId)",
+  "function getInvoice(uint256 invoiceId) view returns (tuple(uint256 invoiceId, address merchant, address tokenIn, uint256 amountIn, uint8 status, string metadata))",
+  "function cancelInvoice(uint256 invoiceId)",
 ];
 
-export enum InvoiceStatus {
-  Pending = 0,
-  Paid = 1,
-  Cancelled = 2,
-}
+const ERC20_ABI = [
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function balanceOf(address account) view returns (uint256)",
+];
 
-export interface InvoiceData {
-  invoiceId: string;
-  merchant: string;
-  payer: string;
-  amount: string; // dalam ETH (string)
-  fee: string;
-  createdAt: Date;
-  paidAt: Date | null;
-  status: InvoiceStatus;
-  metadata: Record<string, unknown>;
-}
-
-export interface FormattedInvoice {
-  invoiceNumber: string;
-  date: string;
-  merchant: string;
-  payer: string;
-  amount: string;
-  fee: string;
-  total: string;
-  status: 'Pending' | 'Paid' | 'Cancelled';
-  tokenSymbol: string;
-  fiatAmount: string;
-  fiatSymbol: string;
-}
-
-/**
- * Hook untuk mengelola invoice on-chain dengan native ETH
- * Tidak perlu approval - user langsung kirim ETH!
- */
 export function useInvoice() {
   const signer = useEthersSigner();
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const getContract = useCallback(() => {
-    if (!signer) throw new Error('Wallet not connected');
+    if (!signer || !INVOICE_CONTRACT_ADDRESS) return null;
     return new Contract(INVOICE_CONTRACT_ADDRESS, INVOICE_ABI, signer);
   }, [signer]);
 
-  /**
-   * Membuat invoice baru
-   * @param merchant - Alamat wallet penerima pembayaran
-   * @param amount - Jumlah dalam ETH (string, contoh: "0.01" = 0.01 ETH)
-   * @param fee - Platform fee dalam ETH (opsional, default "0")
-   * @param metadata - Data tambahan dalam format object (opsional)
-   */
+  // MERCHANT: Membuat Invoice
   const createInvoice = useCallback(
-    async ({
-      merchant,
-      amount,
-      fee = '0',
-      metadata = {},
-    }: {
-      merchant: string;
-      amount: string;
-      fee?: string;
-      metadata?: Record<string, unknown>;
-    }) => {
+    async ({ merchant, amount, tokenType = "USDC", metadata = {} }: any) => {
+      const contract = getContract();
+      if (!contract) return { success: false, error: "Wallet not connected" };
+
       setIsLoading(true);
-      setError(null);
-
-      console.log('[createInvoice] Input:', { merchant, amount, fee, metadata });
-
       try {
-        const contract = getContract();
-        
-        // HACKATHON DEMO: Treat input as IDR and convert to small ETH
-        // Rate: 1 IDR = 0.0000001 ETH
-        // Example: 10,000 IDR -> 0.001 ETH
-        // Example: 10 IDR -> 0.000001 ETH
-        const scaledAmount = (parseFloat(amount) * 0.0000001).toFixed(18);
-        const amountWei = parseEther(scaledAmount);
-        const feeWei = parseEther(fee);
-        
-        console.log('[createInvoice] Scaled for Demo:', { 
-          original: amount, 
-          scaled: scaledAmount,
-          wei: amountWei.toString() 
-        });
+        const tokenAddress = tokenType === "IDRX" ? IDRX_ADDRESS : USDC_ADDRESS;
+
+        // DISESUAIKAN: Keduanya sekarang menggunakan 6 desimal
+        const decimals = 6;
+        const amountWei = parseUnits(amount, decimals);
+
+        console.log(
+          `[Create] Mengirim ke Blockchain: ${amount} unit (${amountWei.toString()} wei)`,
+        );
 
         const tx = await contract.createInvoice(
           merchant,
+          tokenAddress,
           amountWei,
-          feeWei,
-          JSON.stringify(metadata)
+          JSON.stringify(metadata),
         );
-        console.log('[createInvoice] TX sent:', tx.hash);
         const receipt = await tx.wait();
-        console.log('[createInvoice] TX confirmed:', receipt.hash);
 
-        const event = receipt.logs
-          .map((log: unknown) => {
-            try {
-              return contract.interface.parseLog(log as { topics: string[]; data: string });
-            } catch {
-              return null;
-            }
-          })
-          .find((e: { name: string } | null) => e && e.name === 'InvoiceCreated');
+        const event = receipt?.logs?.find((log: any) => {
+          try {
+            return contract.interface.parseLog(log)?.name === "InvoiceCreated";
+          } catch {
+            return false;
+          }
+        });
 
-        const invoiceId = event?.args?.invoiceId?.toString();
-        console.log('[createInvoice] SUCCESS! InvoiceId:', invoiceId);
+        if (!event) throw new Error("Event InvoiceCreated tidak ditemukan");
+
+        const parsedLog = contract.interface.parseLog(event);
+        const invoiceId = parsedLog?.args?.invoiceId?.toString();
 
         setIsLoading(false);
         return { success: true, invoiceId, txHash: receipt.hash };
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : 'Failed to create invoice';
-        setError(errorMsg);
+      } catch (err: any) {
         setIsLoading(false);
-        return { success: false, error: errorMsg };
+        console.error("Create Error:", err);
+        return { success: false, error: err.message };
       }
     },
-    [getContract]
+    [getContract],
   );
 
-  /**
-   * Mengambil data invoice dari blockchain
-   */
+  // FETCH DATA: Mengambil detail Invoice
   const getInvoice = useCallback(
-    async (invoiceId: string): Promise<InvoiceData | null> => {
-      setIsLoading(true);
-      setError(null);
-
-      console.log('[getInvoice] Fetching invoiceId:', invoiceId);
+    async (invoiceId: string) => {
+      const contract = getContract();
+      if (!contract) return null;
 
       try {
-        const contract = getContract();
         const data = await contract.getInvoice(invoiceId);
-        console.log('[getInvoice] Raw data from blockchain:', {
-          invoiceId: data.invoiceId.toString(),
-          merchant: data.merchant,
-          payer: data.payer,
-          amount: data.amount.toString(),
-          fee: data.fee.toString(),
-          status: data.status,
-          metadata: data.metadata,
-        });
-
-        let parsedMetadata = {};
+        let metadata = {};
         try {
-          parsedMetadata = JSON.parse(data.metadata || '{}');
+          metadata = JSON.parse(data.metadata || "{}");
         } catch {
-          parsedMetadata = {};
+          metadata = {};
         }
 
-        const invoice: InvoiceData = {
+        // DISESUAIKAN: Gunakan 6 desimal untuk formatting
+        const decimals = 6;
+
+        return {
           invoiceId: data.invoiceId.toString(),
           merchant: data.merchant,
-          payer: data.payer,
-          amount: formatEther(data.amount), // 18 decimals
-          fee: formatEther(data.fee),
-          createdAt: new Date(Number(data.createdAt) * 1000),
-          paidAt: data.paidAt > 0 ? new Date(Number(data.paidAt) * 1000) : null,
-          status: Number(data.status) as InvoiceStatus,
-          metadata: parsedMetadata,
+          tokenIn: data.tokenIn,
+          amountIn: formatUnits(data.amountIn, decimals),
+          status: Number(data.status),
+          metadata: metadata as any,
         };
-
-        console.log('[getInvoice] Parsed invoice:', invoice);
-        setIsLoading(false);
-        return invoice;
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : 'Failed to fetch invoice';
-        setError(errorMsg);
-        setIsLoading(false);
+        console.error("Gagal fetch invoice:", err);
         return null;
       }
     },
-    [getContract]
+    [getContract],
   );
 
-  /**
-   * Mengambil data invoice dalam format siap tampil untuk UI
-   */
-  const getFormattedInvoice = useCallback(
-    async (invoiceId: string): Promise<FormattedInvoice | null> => {
-      const invoice = await getInvoice(invoiceId);
-      if (!invoice) return null;
-
-      const metadata = invoice.metadata as {
-        tokenSymbol?: string;
-        fiatSymbol?: string;
-        fiatAmount?: string;
-      };
-
-      const statusMap = {
-        [InvoiceStatus.Pending]: 'Pending' as const,
-        [InvoiceStatus.Paid]: 'Paid' as const,
-        [InvoiceStatus.Cancelled]: 'Cancelled' as const,
-      };
-
-      return {
-        invoiceNumber: `#${invoice.invoiceId}`,
-        date: invoice.createdAt.toLocaleDateString('en-US', {
-          weekday: 'long',
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-        }),
-        merchant: invoice.merchant,
-        payer: invoice.payer,
-        amount: invoice.amount,
-        fee: invoice.fee,
-        total: (parseFloat(invoice.amount) + parseFloat(invoice.fee)).toString(),
-        status: statusMap[invoice.status],
-        tokenSymbol: metadata.tokenSymbol || 'ETH',
-        fiatAmount: metadata.fiatAmount || invoice.amount,
-        fiatSymbol: metadata.fiatSymbol || 'USD',
-      };
-    },
-    [getInvoice]
-  );
-
-  /**
-   * Membayar invoice dengan ETH (TANPA APPROVAL!)
-   * User langsung kirim ETH dalam satu transaksi
-   */
+  // PAYER: Membayar Invoice
   const payInvoice = useCallback(
     async (invoiceId: string) => {
+      console.log(`[Payer] Memulai proses bayar untuk ID: ${invoiceId}`);
       setIsLoading(true);
-      setError(null);
-
-      console.log('[payInvoice] Paying invoiceId:', invoiceId);
 
       try {
         const contract = getContract();
-        
-        // Ambil data invoice untuk tahu jumlah yang harus dibayar
-        const invoiceData = await contract.getInvoice(invoiceId);
-        const totalAmount = invoiceData.amount + invoiceData.fee;
-        console.log('[payInvoice] Invoice data:', {
-          amount: invoiceData.amount.toString(),
-          fee: invoiceData.fee.toString(),
-          totalAmount: totalAmount.toString(),
-          totalAmountETH: formatEther(totalAmount),
-        });
+        if (!contract || !signer) throw new Error("Wallet tidak terhubung");
 
-        // Bayar dengan mengirim ETH langsung
-        console.log('[payInvoice] Sending TX with value:', totalAmount.toString());
-        const tx = await contract.payInvoice(invoiceId, {
-          value: totalAmount,
-        });
-        console.log('[payInvoice] TX sent:', tx.hash);
+        // 1. Ambil info invoice langsung dari blockchain
+        const invData = await contract.getInvoice(invoiceId);
+        const tokenAddress = invData.tokenIn;
+        const amountWei = invData.amountIn;
+
+        // 2. APPROVE Token
+        const tokenContract = new Contract(tokenAddress, ERC20_ABI, signer);
+        console.log(
+          `[Payer] Menyetujui penarikan ${amountWei.toString()} unit token...`,
+        );
+
+        const appTx = await tokenContract.approve(
+          INVOICE_CONTRACT_ADDRESS,
+          amountWei,
+        );
+        await appTx.wait();
+        console.log("[Payer] Approve BERHASIL.");
+
+        // 3. Eksekusi Pembayaran
+        console.log(
+          "[Payer] Mengeksekusi fungsi payInvoice di Smart Contract...",
+        );
+        const tx = await contract.payInvoice(invoiceId);
         const receipt = await tx.wait();
-        console.log('[payInvoice] TX confirmed:', receipt.hash);
+        console.log("[Payer] Pembayaran SUKSES di Blockchain!");
 
         setIsLoading(false);
-        return { success: true, txHash: receipt.hash };
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : 'Failed to pay invoice';
-        setError(errorMsg);
+        return { success: true };
+      } catch (err: any) {
+        console.error("[Payer] Error Detail:", err);
         setIsLoading(false);
-        return { success: false, error: errorMsg };
+        return { success: false, error: err.message };
       }
     },
-    [getContract]
+    [getContract, signer],
   );
 
-  /**
-   * Membatalkan invoice (hanya merchant)
-   */
-  const cancelInvoice = useCallback(
-    async (invoiceId: string) => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const contract = getContract();
-        const tx = await contract.cancelInvoice(invoiceId);
-        const receipt = await tx.wait();
-
-        setIsLoading(false);
-        return { success: true, txHash: receipt.hash };
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : 'Failed to cancel invoice';
-        setError(errorMsg);
-        setIsLoading(false);
-        return { success: false, error: errorMsg };
-      }
-    },
-    [getContract]
-  );
-
-  /**
-   * Mengambil total jumlah invoice
-   */
-  const getTotalInvoices = useCallback(async () => {
-    try {
-      const contract = getContract();
-      const total = await contract.totalInvoices();
-      return Number(total);
-    } catch {
-      return 0;
-    }
-  }, [getContract]);
-
-  /**
-   * Monitor status invoice secara berkala (polling)
-   */
+  // MONITOR: Polling Status untuk Merchant
   const watchInvoiceStatus = useCallback(
-    (
-      invoiceId: string,
-      options: {
-        onPaid?: (invoice: InvoiceData) => void;
-        onCancelled?: (invoice: InvoiceData) => void;
-        onError?: (error: string) => void;
-        intervalMs?: number;
-        maxAttempts?: number;
-      } = {}
-    ) => {
-      const { onPaid, onCancelled, onError, intervalMs = 3000, maxAttempts = 100 } = options;
-      let attempts = 0;
+    (invoiceId: string, options: any) => {
       let stopped = false;
-
       const poll = async () => {
         if (stopped) return;
-
         try {
           const contract = getContract();
+          if (!contract) return;
+
           const data = await contract.getInvoice(invoiceId);
-          const status = Number(data.status) as InvoiceStatus;
 
-          if (status === InvoiceStatus.Paid) {
+          if (Number(data.status) === 1) {
+            // 1 = PAID
+            console.log(
+              "[Poll] Status PAID terdeteksi. Mencari siapa pengirimnya...",
+            );
+
+            // MENCARI ALAMAT PAYER: Cari event 'InvoicePaid' di blockchain
+            const filter = contract.filters.InvoicePaid(invoiceId);
+            const events = await contract.queryFilter(filter, -1000); // Cek 1000 blok terakhir
+
+            const payerAddress =
+              events.length > 0
+                ? (events[events.length - 1] as any).args.payer
+                : "Unknown Payer";
+
             stopped = true;
-            const invoice: InvoiceData = {
-              invoiceId: data.invoiceId.toString(),
-              merchant: data.merchant,
-              payer: data.payer,
-              amount: formatEther(data.amount),
-              fee: formatEther(data.fee),
-              createdAt: new Date(Number(data.createdAt) * 1000),
-              paidAt: new Date(Number(data.paidAt) * 1000),
-              status,
-              metadata: JSON.parse(data.metadata || '{}'),
-            };
-            onPaid?.(invoice);
+            options.onPaid?.({ invoiceId, payer: payerAddress }); // Kirim payer ke UI
             return;
           }
 
-          if (status === InvoiceStatus.Cancelled) {
-            stopped = true;
-            const invoice: InvoiceData = {
-              invoiceId: data.invoiceId.toString(),
-              merchant: data.merchant,
-              payer: data.payer,
-              amount: formatEther(data.amount),
-              fee: formatEther(data.fee),
-              createdAt: new Date(Number(data.createdAt) * 1000),
-              paidAt: null,
-              status,
-              metadata: JSON.parse(data.metadata || '{}'),
-            };
-            onCancelled?.(invoice);
-            return;
-          }
-
-          attempts++;
-          if (attempts >= maxAttempts) {
-            stopped = true;
-            onError?.('Polling timeout: max attempts reached');
-            return;
-          }
-
-          setTimeout(poll, intervalMs);
+          setTimeout(poll, 3000); // Cek lagi tiap 3 detik
         } catch (err) {
-          if (!stopped) {
-            onError?.(err instanceof Error ? err.message : 'Failed to fetch invoice status');
-          }
+          console.error("[Poll] Error:", err);
+          setTimeout(poll, 3000);
         }
       };
-
       poll();
-
       return {
         stop: () => {
           stopped = true;
         },
       };
     },
-    [getContract]
+    [getContract],
   );
 
   return {
-    isLoading,
-    error,
-    setError,
-
     createInvoice,
-    getInvoice,
-    getFormattedInvoice,
     payInvoice,
-    cancelInvoice,
-    getTotalInvoices,
+    getInvoice,
     watchInvoiceStatus,
-
-    contractAddress: INVOICE_CONTRACT_ADDRESS,
+    isLoading,
   };
 }
