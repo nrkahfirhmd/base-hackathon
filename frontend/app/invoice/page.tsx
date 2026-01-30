@@ -7,18 +7,28 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
-import { useInvoice, FormattedInvoice, InvoiceStatus } from "@/app/hooks/useInvoice";
+import { useInvoice, FormattedInvoice } from "@/app/hooks/useInvoice";
+import { useAccount } from "wagmi";
 
 export default function Invoice() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { address } = useAccount();
   const invoiceIdParam = searchParams.get("invoiceId") || "";
 
-  const { getFormattedInvoice, payInvoice, isLoading, error } = useInvoice();
+  const { 
+    getFormattedInvoice, 
+    payInvoice, 
+    approveIDRX, 
+    checkAllowance, 
+    isLoading, 
+    error 
+  } = useInvoice();
 
   const [invoice, setInvoice] = useState<FormattedInvoice | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
+  const [paymentStep, setPaymentStep] = useState<"idle" | "approving" | "paying">("idle");
 
   // Fetch invoice data dari blockchain
   useEffect(() => {
@@ -27,7 +37,6 @@ export default function Invoice() {
     getFormattedInvoice(invoiceIdParam).then((data) => {
       if (data) {
         setInvoice(data);
-        // Jika invoice sudah dibayar, tampilkan success animation
         if (data.status === "Paid") {
           setShowSuccess(true);
           setTimeout(() => setShowSuccess(false), 1500);
@@ -36,23 +45,48 @@ export default function Invoice() {
     });
   }, [invoiceIdParam, getFormattedInvoice]);
 
-  // Handler untuk bayar invoice
+  // Handler untuk bayar invoice (dengan auto-approve jika perlu)
   const handlePayInvoice = async () => {
-    if (!invoiceIdParam || isPaying) return;
+    if (!invoiceIdParam || !invoice || !address || isPaying) return;
 
     setIsPaying(true);
-    const result = await payInvoice(invoiceIdParam);
 
-    if (result.success) {
-      setShowSuccess(true);
-      // Refresh invoice data
-      const updated = await getFormattedInvoice(invoiceIdParam);
-      if (updated) setInvoice(updated);
-      setTimeout(() => setShowSuccess(false), 1500);
-    } else {
-      alert(`Pembayaran gagal: ${result.error}`);
+    try {
+      // 1. Cek allowance
+      const currentAllowance = await checkAllowance(address);
+      const requiredAmount = parseFloat(invoice.total);
+
+      // 2. Jika allowance kurang, approve dulu
+      if (parseFloat(currentAllowance) < requiredAmount) {
+        setPaymentStep("approving");
+        const approveResult = await approveIDRX(invoice.total);
+        
+        if (!approveResult.success) {
+          alert(`Approve gagal: ${approveResult.error}`);
+          setIsPaying(false);
+          setPaymentStep("idle");
+          return;
+        }
+      }
+
+      // 3. Bayar invoice
+      setPaymentStep("paying");
+      const result = await payInvoice(invoiceIdParam);
+
+      if (result.success) {
+        setShowSuccess(true);
+        const updated = await getFormattedInvoice(invoiceIdParam);
+        if (updated) setInvoice(updated);
+        setTimeout(() => setShowSuccess(false), 1500);
+      } else {
+        alert(`Pembayaran gagal: ${result.error}`);
+      }
+    } catch (err) {
+      alert(`Error: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
+
     setIsPaying(false);
+    setPaymentStep("idle");
   };
 
   // Handler share invoice
@@ -64,14 +98,20 @@ export default function Invoice() {
           text: `Invoice ${invoice.invoiceNumber} - ${invoice.total} ${invoice.tokenSymbol}`,
           url: window.location.href,
         });
-      } catch (err) {
+      } catch {
         console.log("Share cancelled");
       }
     } else {
-      // Fallback: copy link
       navigator.clipboard.writeText(window.location.href);
       alert("Link copied to clipboard!");
     }
+  };
+
+  // Get button text based on payment step
+  const getPayButtonText = () => {
+    if (paymentStep === "approving") return "Approving...";
+    if (paymentStep === "paying") return "Paying...";
+    return "Pay Now";
   };
 
   // Loading state
@@ -155,7 +195,10 @@ export default function Invoice() {
                 invoiceNumber={invoice.invoiceNumber}
                 date={invoice.date}
                 transferMethod={invoice.tokenSymbol}
-                from={`${invoice.payer.slice(0, 6)}...${invoice.payer.slice(-4)}`}
+                from={invoice.payer !== "0x0000000000000000000000000000000000000000" 
+                  ? `${invoice.payer.slice(0, 6)}...${invoice.payer.slice(-4)}`
+                  : "Pending..."
+                }
                 to={`${invoice.merchant.slice(0, 6)}...${invoice.merchant.slice(-4)}`}
                 gasFee={`${invoice.tokenSymbol} ${invoice.fee}`}
                 transferAmount={`${invoice.tokenSymbol} ${invoice.amount}`}
@@ -193,7 +236,7 @@ export default function Invoice() {
                   onClick={handlePayInvoice}
                   disabled={isLoading || isPaying}
                 >
-                  {isPaying ? "Processing..." : "Pay Now"}
+                  {getPayButtonText()}
                 </PrimaryButton>
               )}
 

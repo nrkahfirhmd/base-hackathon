@@ -5,6 +5,12 @@ import { useEthersSigner } from './useEthers';
 import { Contract, formatUnits, parseUnits } from 'ethers';
 
 const INVOICE_CONTRACT_ADDRESS = '0x9C70555B2582B051Ae2a5F537c7217185E6Be329';
+const IDRX_ADDRESS = '0xA62B99a9B85429F5d20dc8E48288f0Cf72aae63B';
+
+const ERC20_ABI = [
+  'function approve(address spender, uint256 amount) returns (bool)',
+  'function allowance(address owner, address spender) view returns (uint256)',
+];
 
 const INVOICE_ABI = [
   'event InvoiceCreated(uint256 indexed invoiceId, address indexed merchant, uint256 amount, uint256 fee)',
@@ -462,12 +468,59 @@ export function useInvoice() {
     [getContract]
   );
 
+  /**
+   * Approve IDRX token untuk Invoice contract
+   * @param amount - Jumlah IDRX yang diizinkan
+   * @returns { success: boolean, txHash?: string, error?: string }
+   */
+  const approveIDRX = useCallback(
+    async (amount: string) => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        if (!signer) throw new Error('Wallet not connected');
+        const idrxContract = new Contract(IDRX_ADDRESS, ERC20_ABI, signer);
+        const tx = await idrxContract.approve(
+          INVOICE_CONTRACT_ADDRESS,
+          parseUnits(amount, 6)
+        );
+        const receipt = await tx.wait();
+
+        setIsLoading(false);
+        return { success: true, txHash: receipt.hash };
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : 'Failed to approve IDRX';
+        setError(errorMsg);
+        setIsLoading(false);
+        return { success: false, error: errorMsg };
+      }
+    },
+    [signer]
+  );
+
+  /**
+   * Cek allowance IDRX untuk Invoice contract
+   * @param owner - Alamat wallet pemilik token
+   * @returns string - Jumlah allowance
+   */
+  const checkAllowance = useCallback(
+    async (owner: string) => {
+      try {
+        if (!signer) throw new Error('Wallet not connected');
+        const idrxContract = new Contract(IDRX_ADDRESS, ERC20_ABI, signer);
+        const allowance = await idrxContract.allowance(owner, INVOICE_CONTRACT_ADDRESS);
+        return formatUnits(allowance, 6);
+      } catch {
+        return '0';
+      }
+    },
+    [signer]
+  );
+
   return {
-    /** Status loading untuk operasi async */
     isLoading,
-    /** Pesan error jika ada */
     error,
-    /** Fungsi untuk reset error */
     setError,
 
     createInvoice,
@@ -478,9 +531,10 @@ export function useInvoice() {
     cancelInvoice,
     getTotalInvoices,
     watchInvoiceStatus,
+    approveIDRX,
+    checkAllowance,
 
-    /** Alamat Invoice contract */
     contractAddress: INVOICE_CONTRACT_ADDRESS,
+    idrxAddress: IDRX_ADDRESS,
   };
 }
-
