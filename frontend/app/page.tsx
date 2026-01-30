@@ -40,6 +40,7 @@ export default function Home() {
     isLoading: isRatesLoading,
   } = useTokenRates(allSymbols);
 
+  // 3. LOGIKA ANALISIS PORTOFOLIO (REAL-TIME)
   const portfolioStats = useMemo(() => {
     let totalNow = 0;
     let totalBefore = 0;
@@ -71,14 +72,15 @@ export default function Home() {
 
     return {
       balance: formatter.format(totalNow),
-
       profit:
         (totalProfit >= 0 ? "+ " : "- ") +
         "IDRX " +
         formatter.format(Math.abs(totalProfit)),
-      // Gunakan 4 desimal untuk growth karena perubahan 5 menit biasanya sangat kecil
+      // Gunakan 4 desimal karena perubahan 5 menit biasanya sangat kecil
       growth: growthPercentage.toFixed(4) + "%",
       rawGrowth: growthPercentage,
+      // DETEKSI KERUGIAN: TRUE jika profit di bawah nol
+      isLoss: totalProfit < 0,
     };
   }, [assetsWithBalance, rates, prevRates]);
 
@@ -97,12 +99,13 @@ export default function Home() {
         username={profile?.username || "Anonymous"}
       />
 
-      {/* Balance Card menampilkan total portfolio & profit selisih 5 menit */}
+      {/* Balance Card: Sekarang menerima prop isLoss secara dinamis */}
       <BalanceCard
         balance={"IDRX " + portfolioStats.balance}
         profit={portfolioStats.profit}
         growthRate={portfolioStats.growth}
         balanceGrowth={portfolioStats.growth}
+        isLoss={portfolioStats.isLoss}
       />
 
       {(isBalanceLoading || isRatesLoading) && (
@@ -117,11 +120,13 @@ export default function Home() {
           <h2 className="text-gray-400 text-sm mb-2">Your Assets</h2>
           {assetsWithBalance.map((asset) => {
             const assetData = toCryptoAsset(asset);
+            const sym = assetData.symbol.toUpperCase();
             return (
               <CryptoItem
                 key={asset.id}
                 asset={assetData}
-                rate={rates[assetData.symbol.toUpperCase()]}
+                rate={rates[sym]}
+                prevRate={prevRates[sym]}
               />
             );
           })}
@@ -133,11 +138,13 @@ export default function Home() {
         <h2 className="text-gray-400 text-sm mb-2">Market Rates</h2>
         {cryptoAssets.map((asset) => {
           const assetData = toCryptoAsset(asset);
+          const sym = assetData.symbol.toUpperCase();
           return (
             <CryptoItem
               key={`all-${asset.id}`}
               asset={assetData}
-              rate={rates[assetData.symbol.toUpperCase()]}
+              rate={rates[sym]}
+              prevRate={prevRates[sym]}
             />
           );
         })}
