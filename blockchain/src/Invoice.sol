@@ -1,31 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
-import "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-
-interface IDeQRyptRouter {
-    function pay(
-        address tokenIn,
-        uint256 amountIn,
-        uint256 minOutIDRX,
-        address recipient,
-        bytes32 referenceId,
-        uint256 deadline
-    ) external returns (uint256 amountOutIDRX);
-}
-
+/// @title Invoice - Simple invoice payment with native ETH
+/// @notice No approval needed, user just sends ETH directly
 contract Invoice {
-    using SafeERC20 for IERC20;
-
-    enum InvoiceStatus { Pending, Paid, Cancelled }
+    enum InvoiceStatus {
+        Pending,
+        Paid,
+        Cancelled
+    }
 
     struct InvoiceData {
         uint256 invoiceId;
-        address merchant;      // penerima pembayaran
-        address payer;         // pembayar (diisi saat pay)
-        uint256 amount;        // jumlah dalam IDRX (6 decimals)
-        uint256 fee;           // platform fee dalam IDRX
+        address merchant;
+        address payer;
+        uint256 amount; // dalam wei (18 decimals)
+        uint256 fee; // platform fee dalam wei
         uint256 createdAt;
         uint256 paidAt;
         InvoiceStatus status;
@@ -38,11 +28,10 @@ contract Invoice {
     error OnlyMerchantCanCancel();
     error AmountZero();
     error InvalidMerchant();
+    error InsufficientPayment();
+    error TransferFailed();
 
     address public owner;
-    IERC20 public immutable idrx;
-    IDeQRyptRouter public immutable router;
-
     uint256 private _nextInvoiceId = 1;
     mapping(uint256 => InvoiceData) private _invoices;
 
@@ -59,17 +48,15 @@ contract Invoice {
     );
     event InvoiceCancelled(uint256 indexed invoiceId);
 
-    constructor(address _idrx, address _router) {
+    constructor() {
         owner = msg.sender;
-        idrx = IERC20(_idrx);
-        router = IDeQRyptRouter(_router);
     }
 
     /// @notice Membuat invoice baru
     /// @param merchant Alamat penerima pembayaran
-    /// @param amount Jumlah dalam IDRX (6 decimals)
-    /// @param fee Platform fee dalam IDRX
-    /// @param metadata JSON string untuk data tambahan (tokenSymbol, fiatAmount, dll)
+    /// @param amount Jumlah dalam wei (18 decimals)
+    /// @param fee Platform fee dalam wei
+    /// @param metadata JSON string untuk data tambahan
     function createInvoice(
         address merchant,
         uint256 amount,
@@ -98,27 +85,45 @@ contract Invoice {
     }
 
     /// @notice Mendapatkan data invoice
-    function getInvoice(uint256 invoiceId) external view returns (InvoiceData memory) {
+    function getInvoice(
+        uint256 invoiceId
+    ) external view returns (InvoiceData memory) {
         InvoiceData memory inv = _invoices[invoiceId];
         if (inv.createdAt == 0) revert InvoiceNotFound();
         return inv;
     }
 
-    /// @notice Membayar invoice langsung dengan IDRX
-    function payInvoice(uint256 invoiceId) external {
+    /// @notice Membayar invoice dengan ETH (tanpa approval!)
+    /// @param invoiceId ID invoice yang akan dibayar
+    function payInvoice(uint256 invoiceId) external payable {
         InvoiceData storage inv = _invoices[invoiceId];
         if (inv.createdAt == 0) revert InvoiceNotFound();
         if (inv.status == InvoiceStatus.Paid) revert InvoiceAlreadyPaid();
-        if (inv.status == InvoiceStatus.Cancelled) revert InvoiceAlreadyCancelled();
+        if (inv.status == InvoiceStatus.Cancelled)
+            revert InvoiceAlreadyCancelled();
 
         uint256 totalAmount = inv.amount + inv.fee;
+        if (msg.value < totalAmount) revert InsufficientPayment();
 
-        // Transfer IDRX dari payer ke merchant
-        idrx.safeTransferFrom(msg.sender, inv.merchant, inv.amount);
-        
-        // Transfer fee ke owner (deployer)
+        // Transfer ETH ke merchant
+        (bool successMerchant, ) = payable(inv.merchant).call{
+            value: inv.amount
+        }("");
+        if (!successMerchant) revert TransferFailed();
+
+        // Transfer fee ke owner
         if (inv.fee > 0) {
-            idrx.safeTransferFrom(msg.sender, owner, inv.fee);
+            (bool successFee, ) = payable(owner).call{value: inv.fee}("");
+            if (!successFee) revert TransferFailed();
+        }
+
+        // Refund kelebihan ETH
+        uint256 excess = msg.value - totalAmount;
+        if (excess > 0) {
+            (bool successRefund, ) = payable(msg.sender).call{value: excess}(
+                ""
+            );
+            if (!successRefund) revert TransferFailed();
         }
 
         inv.payer = msg.sender;
@@ -128,50 +133,13 @@ contract Invoice {
         emit InvoicePaid(invoiceId, msg.sender, totalAmount);
     }
 
-    /// @notice Membayar invoice via DeQRyptRouter (swap token lain ke IDRX)
-    /// @param invoiceId ID invoice yang akan dibayar
-    /// @param tokenIn Token yang digunakan untuk membayar (misal USDC)
-    /// @param amountIn Jumlah token yang dikirim
-    /// @param minOut Minimum IDRX yang diterima (slippage protection)
-    /// @param deadline Batas waktu transaksi
-    function payInvoiceViaRouter(
-        uint256 invoiceId,
-        address tokenIn,
-        uint256 amountIn,
-        uint256 minOut,
-        uint256 deadline
-    ) external {
-        InvoiceData storage inv = _invoices[invoiceId];
-        if (inv.createdAt == 0) revert InvoiceNotFound();
-        if (inv.status == InvoiceStatus.Paid) revert InvoiceAlreadyPaid();
-        if (inv.status == InvoiceStatus.Cancelled) revert InvoiceAlreadyCancelled();
-
-        // Transfer tokenIn dari payer ke contract ini
-        IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
-        
-        // Approve router untuk spend tokenIn
-        IERC20(tokenIn).approve(address(router), amountIn);
-
-        // Pay via router - IDRX akan dikirim ke merchant
-        bytes32 refId = bytes32(invoiceId);
-        router.pay(tokenIn, amountIn, minOut, inv.merchant, refId, deadline);
-
-        // Note: Fee handling via router perlu disesuaikan
-        // Untuk MVP, fee diabaikan saat bayar via router
-
-        inv.payer = msg.sender;
-        inv.paidAt = block.timestamp;
-        inv.status = InvoiceStatus.Paid;
-
-        emit InvoicePaid(invoiceId, msg.sender, inv.amount);
-    }
-
     /// @notice Membatalkan invoice (hanya merchant)
     function cancelInvoice(uint256 invoiceId) external {
         InvoiceData storage inv = _invoices[invoiceId];
         if (inv.createdAt == 0) revert InvoiceNotFound();
         if (inv.status == InvoiceStatus.Paid) revert InvoiceAlreadyPaid();
-        if (inv.status == InvoiceStatus.Cancelled) revert InvoiceAlreadyCancelled();
+        if (inv.status == InvoiceStatus.Cancelled)
+            revert InvoiceAlreadyCancelled();
         if (msg.sender != inv.merchant) revert OnlyMerchantCanCancel();
 
         inv.status = InvoiceStatus.Cancelled;
