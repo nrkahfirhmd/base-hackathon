@@ -2,12 +2,27 @@ import requests
 from decimal import getcontext
 from web3 import Web3
 import base64
+import time
 from fastapi import UploadFile
 from database import supabase
 from config import settings
 from agent import _fetch_live_apy_logic, _ai_recommend_protocol, _calculate_profit, _pool, _erc20, _from_units, _get_days_from_now
 
 getcontext().prec = 50
+
+CACHE_TTL = 60
+SYMBOL_MAP = {
+    "ETH": "ethereum",
+    "WETH": "ethereum",  
+    "BTC": "bitcoin",
+    "USDC": "usd-coin",
+    "MUSDC": "usd-coin",  
+    "IDRX": "idrx",
+    "MIDRX": "idrx",     
+    "SOL": "solana",
+    "USDT": "tether"
+}
+TOKEN_DATA_CACHE = {}
 
 def get_usdc_rate() -> float:
     COINGECKO_URL = "https://api.coingecko.com/api/v3/simple/price?ids=usd-coin&vs_currencies=idr"
@@ -190,26 +205,38 @@ def log_transaction(sender: str, receiver: str, amount: float, token: str, tx_ha
     """
     Mencatat transaksi Transfer/Payment ke database.
     """
+    import datetime
+    import random
     try:
+        now = datetime.datetime.now()
+        date_str = now.strftime('%Y%m%d')
+        rand_part = random.randint(1000, 9999)
+        invoice_number = f"INV-{date_str}{rand_part}"
+
         data = {
             "from_address": sender,
             "to_address": receiver,
             "amount": amount,
             "token_symbol": token,
             "tx_hash": tx_hash,
-            "status": "SUCCESS"
+            "status": "SUCCESS",
+            "invoice_number": invoice_number,
+            "created_at": now.isoformat(),
+            "gas_fee": 0  
         }
-        supabase.table("transactions").insert(data).execute()
+        response = supabase.table("transactions").insert(data).execute()
         print(f"Transaction Logged: {amount} {token} from {sender} to {receiver}")
+        if response.data and len(response.data) > 0:
+            return response.data[0]
         return data
     except Exception as e:
         print(f"Failed to log transaction: {e}")
+        raise
 
 def get_main_history(wallet: str):
     """
     Mengambil semua transaksi di mana user adalah PENGIRIM atau PENERIMA.
     """
-    # Supabase "or" syntax: column.operator.value,column.operator.value
     response = supabase.table("transactions")\
         .select("*")\
         .or_(f"from_address.eq.{wallet},to_address.eq.{wallet}")\
@@ -217,3 +244,73 @@ def get_main_history(wallet: str):
         .execute()
     
     return response.data
+
+def get_dynamic_market_rates(symbols: list[str]):
+    global TOKEN_DATA_CACHE
+    current_time = time.time()
+    
+    requested_ids = {}
+    ids_to_fetch = set()
+    
+    for sym in symbols:
+        clean_sym = sym.upper()
+        if clean_sym in SYMBOL_MAP:
+            cg_id = SYMBOL_MAP[clean_sym]
+            requested_ids[clean_sym] = cg_id
+            
+            cached_item = TOKEN_DATA_CACHE.get(cg_id)
+            if not cached_item or (current_time - cached_item["timestamp"] > CACHE_TTL):
+                ids_to_fetch.add(cg_id)
+    
+    if not requested_ids:
+        return []
+    
+    if ids_to_fetch:
+        try:
+            ids_string = ",".join(list(ids_to_fetch))
+            url = "https://api.coingecko.com/api/v3/simple/price"
+            params = {
+                "ids": ids_string,
+                "vs_currencies": "idr,usd",
+                "include_24hr_change": "true"
+            }
+
+            resp = requests.get(url, params=params, timeout=5)
+            resp.raise_for_status()
+            api_data = resp.json()
+            
+            for cg_id, data in api_data.items():
+                TOKEN_DATA_CACHE[cg_id] = {
+                    "data": data,
+                    "timestamp": current_time
+                }
+        except Exception as e:
+            print(f"⚠️ API Error (Using Stale Cache if available): {e}")
+    
+    results = []
+    for sym, cg_id in requested_ids.items():
+        cache_entry = TOKEN_DATA_CACHE.get(cg_id)
+        
+        if cache_entry:
+            item_data = cache_entry["data"]
+            results.append({
+                "symbol": sym,
+                "name": cg_id.replace("-", " ").title(),
+                "price_idr": item_data.get("idr", 0),
+                "price_usd": item_data.get("usd", 0),
+                "change_24h": item_data.get("idr_24h_change", 0),
+                "icon": f"https://wsrv.nl/?url=https://coinicons-api.vercel.app/api/icon/{sym.lower()}",
+                "last_updated": int(cache_entry["timestamp"]) 
+            })
+        else:
+            results.append({
+                "symbol": sym,
+                "name": sym,
+                "price_idr": 0,
+                "price_usd": 0,
+                "change_24h": 0,
+                "icon": "",
+                "error": "Data unavailable"
+            })
+        
+    return results
