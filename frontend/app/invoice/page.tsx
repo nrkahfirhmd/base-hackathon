@@ -8,33 +8,28 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import { useInvoice, FormattedInvoice } from "@/app/hooks/useInvoice";
-import { useAccount } from "wagmi";
 
 export default function Invoice() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { address } = useAccount();
   const invoiceIdParam = searchParams.get("invoiceId") || "";
 
-  const { 
-    getFormattedInvoice, 
-    payInvoice, 
-    approveIDRX, 
-    checkAllowance, 
-    isLoading, 
-    error 
-  } = useInvoice();
+  const { getFormattedInvoice, payInvoice, isLoading, error } = useInvoice();
 
   const [invoice, setInvoice] = useState<FormattedInvoice | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
-  const [paymentStep, setPaymentStep] = useState<"idle" | "approving" | "paying">("idle");
 
   // Fetch invoice data dari blockchain
   useEffect(() => {
-    if (!invoiceIdParam) return;
+    if (!invoiceIdParam) {
+      console.log('[InvoicePage] No invoiceIdParam');
+      return;
+    }
 
+    console.log('[InvoicePage] Fetching invoice:', invoiceIdParam);
     getFormattedInvoice(invoiceIdParam).then((data) => {
+      console.log('[InvoicePage] Received formatted invoice:', data);
       if (data) {
         setInvoice(data);
         if (data.status === "Paid") {
@@ -45,48 +40,28 @@ export default function Invoice() {
     });
   }, [invoiceIdParam, getFormattedInvoice]);
 
-  // Handler untuk bayar invoice (dengan auto-approve jika perlu)
+  // Handler untuk bayar invoice - TANPA APPROVAL!
   const handlePayInvoice = async () => {
-    if (!invoiceIdParam || !invoice || !address || isPaying) return;
+    if (!invoiceIdParam || !invoice || isPaying) return;
 
+    console.log('[InvoicePage] Starting payment for invoice:', invoiceIdParam);
+    console.log('[InvoicePage] Invoice details:', invoice);
     setIsPaying(true);
 
-    try {
-      // 1. Cek allowance
-      const currentAllowance = await checkAllowance(address);
-      const requiredAmount = parseFloat(invoice.total);
+    const result = await payInvoice(invoiceIdParam);
+    console.log('[InvoicePage] Payment result:', result);
 
-      // 2. Jika allowance kurang, approve dulu
-      if (parseFloat(currentAllowance) < requiredAmount) {
-        setPaymentStep("approving");
-        const approveResult = await approveIDRX(invoice.total);
-        
-        if (!approveResult.success) {
-          alert(`Approve gagal: ${approveResult.error}`);
-          setIsPaying(false);
-          setPaymentStep("idle");
-          return;
-        }
-      }
-
-      // 3. Bayar invoice
-      setPaymentStep("paying");
-      const result = await payInvoice(invoiceIdParam);
-
-      if (result.success) {
-        setShowSuccess(true);
-        const updated = await getFormattedInvoice(invoiceIdParam);
-        if (updated) setInvoice(updated);
-        setTimeout(() => setShowSuccess(false), 1500);
-      } else {
-        alert(`Pembayaran gagal: ${result.error}`);
-      }
-    } catch (err) {
-      alert(`Error: ${err instanceof Error ? err.message : "Unknown error"}`);
+    if (result.success) {
+      setShowSuccess(true);
+      const updated = await getFormattedInvoice(invoiceIdParam);
+      console.log('[InvoicePage] Updated invoice after payment:', updated);
+      if (updated) setInvoice(updated);
+      setTimeout(() => setShowSuccess(false), 1500);
+    } else {
+      alert(`Pembayaran gagal: ${result.error}`);
     }
 
     setIsPaying(false);
-    setPaymentStep("idle");
   };
 
   // Handler share invoice
@@ -105,13 +80,6 @@ export default function Invoice() {
       navigator.clipboard.writeText(window.location.href);
       alert("Link copied to clipboard!");
     }
-  };
-
-  // Get button text based on payment step
-  const getPayButtonText = () => {
-    if (paymentStep === "approving") return "Approving...";
-    if (paymentStep === "paying") return "Paying...";
-    return "Pay Now";
   };
 
   // Loading state
@@ -236,7 +204,7 @@ export default function Invoice() {
                   onClick={handlePayInvoice}
                   disabled={isLoading || isPaying}
                 >
-                  {getPayButtonText()}
+                  {isPaying ? "Paying..." : `Pay ${invoice.total} ${invoice.tokenSymbol}`}
                 </PrimaryButton>
               )}
 

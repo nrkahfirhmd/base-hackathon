@@ -2,15 +2,10 @@
 
 import { useCallback, useState } from 'react';
 import { useEthersSigner } from './useEthers';
-import { Contract, formatUnits, parseUnits } from 'ethers';
+import { Contract, formatEther, parseEther } from 'ethers';
 
-const INVOICE_CONTRACT_ADDRESS = '0x9C70555B2582B051Ae2a5F537c7217185E6Be329';
-const IDRX_ADDRESS = '0xA62B99a9B85429F5d20dc8E48288f0Cf72aae63B';
-
-const ERC20_ABI = [
-  'function approve(address spender, uint256 amount) returns (bool)',
-  'function allowance(address owner, address spender) view returns (uint256)',
-];
+// Contract address - deployed on Base Sepolia
+const INVOICE_CONTRACT_ADDRESS = '0xcE52545F8C6e30B4eE54185074029D54f65F5897';
 
 const INVOICE_ABI = [
   'event InvoiceCreated(uint256 indexed invoiceId, address indexed merchant, uint256 amount, uint256 fee)',
@@ -19,8 +14,7 @@ const INVOICE_ABI = [
   'function getInvoice(uint256 invoiceId) view returns (tuple(uint256 invoiceId, address merchant, address payer, uint256 amount, uint256 fee, uint256 createdAt, uint256 paidAt, uint8 status, string metadata))',
   'function totalInvoices() view returns (uint256)',
   'function createInvoice(address merchant, uint256 amount, uint256 fee, string metadata) returns (uint256)',
-  'function payInvoice(uint256 invoiceId)',
-  'function payInvoiceViaRouter(uint256 invoiceId, address tokenIn, uint256 amountIn, uint256 minOut, uint256 deadline)',
+  'function payInvoice(uint256 invoiceId) payable',
   'function cancelInvoice(uint256 invoiceId)',
 ];
 
@@ -34,7 +28,7 @@ export interface InvoiceData {
   invoiceId: string;
   merchant: string;
   payer: string;
-  amount: string;
+  amount: string; // dalam ETH (string)
   fee: string;
   createdAt: Date;
   paidAt: Date | null;
@@ -57,8 +51,8 @@ export interface FormattedInvoice {
 }
 
 /**
- * Hook untuk mengelola invoice on-chain
- * @returns Object berisi state dan fungsi-fungsi untuk invoice
+ * Hook untuk mengelola invoice on-chain dengan native ETH
+ * Tidak perlu approval - user langsung kirim ETH!
  */
 export function useInvoice() {
   const signer = useEthersSigner();
@@ -73,17 +67,9 @@ export function useInvoice() {
   /**
    * Membuat invoice baru
    * @param merchant - Alamat wallet penerima pembayaran
-   * @param amount - Jumlah dalam IDRX (string, contoh: "1000" = 1000 IDRX)
-   * @param fee - Platform fee dalam IDRX (opsional, default "0")
+   * @param amount - Jumlah dalam ETH (string, contoh: "0.01" = 0.01 ETH)
+   * @param fee - Platform fee dalam ETH (opsional, default "0")
    * @param metadata - Data tambahan dalam format object (opsional)
-   * @returns { success: boolean, invoiceId?: string, txHash?: string, error?: string }
-   * @example
-   * const result = await createInvoice({
-   *   merchant: '0x123...',
-   *   amount: '15000',
-   *   fee: '100',
-   *   metadata: { tokenSymbol: 'IDRX', fiatSymbol: 'IDR' }
-   * });
    */
   const createInvoice = useCallback(
     async ({
@@ -100,15 +86,23 @@ export function useInvoice() {
       setIsLoading(true);
       setError(null);
 
+      console.log('[createInvoice] Input:', { merchant, amount, fee, metadata });
+
       try {
         const contract = getContract();
+        const amountWei = parseEther(amount);
+        const feeWei = parseEther(fee);
+        console.log('[createInvoice] Parsed values:', { amountWei: amountWei.toString(), feeWei: feeWei.toString() });
+
         const tx = await contract.createInvoice(
           merchant,
-          parseUnits(amount, 6),
-          parseUnits(fee, 6),
+          amountWei,
+          feeWei,
           JSON.stringify(metadata)
         );
+        console.log('[createInvoice] TX sent:', tx.hash);
         const receipt = await tx.wait();
+        console.log('[createInvoice] TX confirmed:', receipt.hash);
 
         const event = receipt.logs
           .map((log: unknown) => {
@@ -121,6 +115,7 @@ export function useInvoice() {
           .find((e: { name: string } | null) => e && e.name === 'InvoiceCreated');
 
         const invoiceId = event?.args?.invoiceId?.toString();
+        console.log('[createInvoice] SUCCESS! InvoiceId:', invoiceId);
 
         setIsLoading(false);
         return { success: true, invoiceId, txHash: receipt.hash };
@@ -136,20 +131,26 @@ export function useInvoice() {
 
   /**
    * Mengambil data invoice dari blockchain
-   * @param invoiceId - ID invoice (string)
-   * @returns InvoiceData | null
-   * @example
-   * const invoice = await getInvoice('5');
-   * console.log(invoice?.amount); // "1000"
    */
   const getInvoice = useCallback(
     async (invoiceId: string): Promise<InvoiceData | null> => {
       setIsLoading(true);
       setError(null);
 
+      console.log('[getInvoice] Fetching invoiceId:', invoiceId);
+
       try {
         const contract = getContract();
         const data = await contract.getInvoice(invoiceId);
+        console.log('[getInvoice] Raw data from blockchain:', {
+          invoiceId: data.invoiceId.toString(),
+          merchant: data.merchant,
+          payer: data.payer,
+          amount: data.amount.toString(),
+          fee: data.fee.toString(),
+          status: data.status,
+          metadata: data.metadata,
+        });
 
         let parsedMetadata = {};
         try {
@@ -162,14 +163,15 @@ export function useInvoice() {
           invoiceId: data.invoiceId.toString(),
           merchant: data.merchant,
           payer: data.payer,
-          amount: formatUnits(data.amount, 6),
-          fee: formatUnits(data.fee, 6),
+          amount: formatEther(data.amount), // 18 decimals
+          fee: formatEther(data.fee),
           createdAt: new Date(Number(data.createdAt) * 1000),
           paidAt: data.paidAt > 0 ? new Date(Number(data.paidAt) * 1000) : null,
           status: Number(data.status) as InvoiceStatus,
           metadata: parsedMetadata,
         };
 
+        console.log('[getInvoice] Parsed invoice:', invoice);
         setIsLoading(false);
         return invoice;
       } catch (err) {
@@ -184,12 +186,6 @@ export function useInvoice() {
 
   /**
    * Mengambil data invoice dalam format siap tampil untuk UI
-   * @param invoiceId - ID invoice (string)
-   * @returns FormattedInvoice | null
-   * @example
-   * const invoice = await getFormattedInvoice('5');
-   * console.log(invoice?.invoiceNumber); // "#5"
-   * console.log(invoice?.status); // "Pending" | "Paid" | "Cancelled"
    */
   const getFormattedInvoice = useCallback(
     async (invoiceId: string): Promise<FormattedInvoice | null> => {
@@ -222,32 +218,46 @@ export function useInvoice() {
         fee: invoice.fee,
         total: (parseFloat(invoice.amount) + parseFloat(invoice.fee)).toString(),
         status: statusMap[invoice.status],
-        tokenSymbol: metadata.tokenSymbol || 'IDRX',
+        tokenSymbol: metadata.tokenSymbol || 'ETH',
         fiatAmount: metadata.fiatAmount || invoice.amount,
-        fiatSymbol: metadata.fiatSymbol || 'IDR',
+        fiatSymbol: metadata.fiatSymbol || 'USD',
       };
     },
     [getInvoice]
   );
 
   /**
-   * Membayar invoice dengan IDRX langsung
-   * @param invoiceId - ID invoice yang akan dibayar
-   * @returns { success: boolean, txHash?: string, error?: string }
-   * @note Pastikan sudah approve IDRX terlebih dahulu dengan approveIDRX()
-   * @example
-   * await approveIDRX('10000'); // Approve dulu
-   * const result = await payInvoice('5');
+   * Membayar invoice dengan ETH (TANPA APPROVAL!)
+   * User langsung kirim ETH dalam satu transaksi
    */
   const payInvoice = useCallback(
     async (invoiceId: string) => {
       setIsLoading(true);
       setError(null);
 
+      console.log('[payInvoice] Paying invoiceId:', invoiceId);
+
       try {
         const contract = getContract();
-        const tx = await contract.payInvoice(invoiceId);
+        
+        // Ambil data invoice untuk tahu jumlah yang harus dibayar
+        const invoiceData = await contract.getInvoice(invoiceId);
+        const totalAmount = invoiceData.amount + invoiceData.fee;
+        console.log('[payInvoice] Invoice data:', {
+          amount: invoiceData.amount.toString(),
+          fee: invoiceData.fee.toString(),
+          totalAmount: totalAmount.toString(),
+          totalAmountETH: formatEther(totalAmount),
+        });
+
+        // Bayar dengan mengirim ETH langsung
+        console.log('[payInvoice] Sending TX with value:', totalAmount.toString());
+        const tx = await contract.payInvoice(invoiceId, {
+          value: totalAmount,
+        });
+        console.log('[payInvoice] TX sent:', tx.hash);
         const receipt = await tx.wait();
+        console.log('[payInvoice] TX confirmed:', receipt.hash);
 
         setIsLoading(false);
         return { success: true, txHash: receipt.hash };
@@ -262,70 +272,7 @@ export function useInvoice() {
   );
 
   /**
-   * Membayar invoice menggunakan token lain (swap ke IDRX via router)
-   * @param invoiceId - ID invoice
-   * @param tokenIn - Alamat token yang digunakan untuk membayar (misal: USDC)
-   * @param amountIn - Jumlah token input
-   * @param minOut - Minimum IDRX yang diterima (slippage protection)
-   * @param deadlineMinutes - Batas waktu transaksi dalam menit (default: 60)
-   * @returns { success: boolean, txHash?: string, error?: string }
-   * @example
-   * const result = await payInvoiceViaRouter({
-   *   invoiceId: '5',
-   *   tokenIn: '0xUSDC...',
-   *   amountIn: '1',
-   *   minOut: '15000'
-   * });
-   */
-  const payInvoiceViaRouter = useCallback(
-    async ({
-      invoiceId,
-      tokenIn,
-      amountIn,
-      minOut,
-      deadlineMinutes = 60,
-    }: {
-      invoiceId: string;
-      tokenIn: string;
-      amountIn: string;
-      minOut: string;
-      deadlineMinutes?: number;
-    }) => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const contract = getContract();
-        const deadline = Math.floor(Date.now() / 1000) + deadlineMinutes * 60;
-
-        const tx = await contract.payInvoiceViaRouter(
-          invoiceId,
-          tokenIn,
-          parseUnits(amountIn, 6),
-          parseUnits(minOut, 6),
-          deadline
-        );
-        const receipt = await tx.wait();
-
-        setIsLoading(false);
-        return { success: true, txHash: receipt.hash };
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : 'Failed to pay invoice';
-        setError(errorMsg);
-        setIsLoading(false);
-        return { success: false, error: errorMsg };
-      }
-    },
-    [getContract]
-  );
-
-  /**
-   * Membatalkan invoice (hanya bisa dilakukan oleh merchant)
-   * @param invoiceId - ID invoice yang akan dibatalkan
-   * @returns { success: boolean, txHash?: string, error?: string }
-   * @note Hanya invoice dengan status Pending yang bisa dibatalkan
-   * @example
-   * const result = await cancelInvoice('5');
+   * Membatalkan invoice (hanya merchant)
    */
   const cancelInvoice = useCallback(
     async (invoiceId: string) => {
@@ -350,10 +297,7 @@ export function useInvoice() {
   );
 
   /**
-   * Mengambil total jumlah invoice yang sudah dibuat
-   * @returns number - Total invoice
-   * @example
-   * const total = await getTotalInvoices(); // 5
+   * Mengambil total jumlah invoice
    */
   const getTotalInvoices = useCallback(async () => {
     try {
@@ -367,23 +311,6 @@ export function useInvoice() {
 
   /**
    * Monitor status invoice secara berkala (polling)
-   * @param invoiceId - ID invoice yang akan dimonitor
-   * @param options - Opsi polling
-   * @param options.onPaid - Callback ketika invoice sudah dibayar
-   * @param options.onCancelled - Callback ketika invoice dibatalkan
-   * @param options.onError - Callback ketika terjadi error
-   * @param options.intervalMs - Interval polling dalam ms (default: 3000)
-   * @param options.maxAttempts - Maksimum percobaan polling (default: 100 = 5 menit)
-   * @returns { stop: () => void } - Fungsi untuk menghentikan polling
-   * @example
-   * const { stop } = watchInvoiceStatus('5', {
-   *   onPaid: (invoice) => {
-   *     console.log('Paid by:', invoice.payer);
-   *     router.push('/success');
-   *   },
-   *   intervalMs: 3000,
-   * });
-   * // Untuk stop manual: stop();
    */
   const watchInvoiceStatus = useCallback(
     (
@@ -414,8 +341,8 @@ export function useInvoice() {
               invoiceId: data.invoiceId.toString(),
               merchant: data.merchant,
               payer: data.payer,
-              amount: formatUnits(data.amount, 6),
-              fee: formatUnits(data.fee, 6),
+              amount: formatEther(data.amount),
+              fee: formatEther(data.fee),
               createdAt: new Date(Number(data.createdAt) * 1000),
               paidAt: new Date(Number(data.paidAt) * 1000),
               status,
@@ -431,8 +358,8 @@ export function useInvoice() {
               invoiceId: data.invoiceId.toString(),
               merchant: data.merchant,
               payer: data.payer,
-              amount: formatUnits(data.amount, 6),
-              fee: formatUnits(data.fee, 6),
+              amount: formatEther(data.amount),
+              fee: formatEther(data.fee),
               createdAt: new Date(Number(data.createdAt) * 1000),
               paidAt: null,
               status,
@@ -468,56 +395,6 @@ export function useInvoice() {
     [getContract]
   );
 
-  /**
-   * Approve IDRX token untuk Invoice contract
-   * @param amount - Jumlah IDRX yang diizinkan
-   * @returns { success: boolean, txHash?: string, error?: string }
-   */
-  const approveIDRX = useCallback(
-    async (amount: string) => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        if (!signer) throw new Error('Wallet not connected');
-        const idrxContract = new Contract(IDRX_ADDRESS, ERC20_ABI, signer);
-        const tx = await idrxContract.approve(
-          INVOICE_CONTRACT_ADDRESS,
-          parseUnits(amount, 6)
-        );
-        const receipt = await tx.wait();
-
-        setIsLoading(false);
-        return { success: true, txHash: receipt.hash };
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : 'Failed to approve IDRX';
-        setError(errorMsg);
-        setIsLoading(false);
-        return { success: false, error: errorMsg };
-      }
-    },
-    [signer]
-  );
-
-  /**
-   * Cek allowance IDRX untuk Invoice contract
-   * @param owner - Alamat wallet pemilik token
-   * @returns string - Jumlah allowance
-   */
-  const checkAllowance = useCallback(
-    async (owner: string) => {
-      try {
-        if (!signer) throw new Error('Wallet not connected');
-        const idrxContract = new Contract(IDRX_ADDRESS, ERC20_ABI, signer);
-        const allowance = await idrxContract.allowance(owner, INVOICE_CONTRACT_ADDRESS);
-        return formatUnits(allowance, 6);
-      } catch {
-        return '0';
-      }
-    },
-    [signer]
-  );
-
   return {
     isLoading,
     error,
@@ -527,14 +404,10 @@ export function useInvoice() {
     getInvoice,
     getFormattedInvoice,
     payInvoice,
-    payInvoiceViaRouter,
     cancelInvoice,
     getTotalInvoices,
     watchInvoiceStatus,
-    approveIDRX,
-    checkAllowance,
 
     contractAddress: INVOICE_CONTRACT_ADDRESS,
-    idrxAddress: IDRX_ADDRESS,
   };
 }
