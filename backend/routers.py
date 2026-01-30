@@ -225,7 +225,24 @@ def lending_info():
 @router.post("/history/add", response_model=AddHistoryResponse)
 def add_history(req: AddHistoryRequest):
     try:
-        return log_transaction(req.sender, req.receiver, req.amount, req.token, req.tx_hash)
+        tx = log_transaction(
+            req.sender, req.receiver, req.amount, req.token, req.tx_hash
+        )
+        response = {
+            "from_address": tx.get("from_address", "-"),
+            "to_address": tx.get("to_address", "-"),
+            "amount": tx.get("amount", 0),
+            "token_symbol": tx.get("token_symbol", "-"),
+            "tx_hash": tx.get("tx_hash", "-"),
+            "status": tx.get("status", "SUCCESS"),
+            "invoice": tx.get("invoice_number", "-"),
+            "date": tx.get("created_at", "-"),
+            "transfer_method": tx.get("token_symbol", "-"),
+            "gas_fee": tx.get("gas_fee", 0),
+            "transfer_amount": tx.get("amount", 0),
+            "total": (float(tx.get("amount", 0)) + float(tx.get("gas_fee", 0))) if tx.get("amount") is not None and tx.get("gas_fee") is not None else 0
+        }
+        return response
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -237,28 +254,37 @@ def transaction_history_endpoint(req: ViewHistoryRequest):
     try:
         my_wallet = req.wallet
         raw_data = get_main_history(my_wallet)
-        
+
         formatted_history = []
-        
+
         for tx in raw_data:
             if tx["from_address"].lower() == my_wallet.lower():
                 direction = "OUT"
-                counterparty = tx["to_address"] 
+                counterparty = tx["to_address"]
             else:
                 direction = "IN"
-                counterparty = tx["from_address"] 
-            
+                counterparty = tx["from_address"]
+
+            amount = float(tx.get("amount", 0))
+            gas_fee = float(tx.get("gas_fee", 0))
+            total = amount + gas_fee
+
             formatted_history.append({
-                "id": tx["id"],
-                "type": direction,      
-                "amount": tx["amount"],
-                "token": tx["token_symbol"],
+                "id": tx.get("id"),
+                "type": direction,
+                "amount": amount,
+                "token": tx.get("token_symbol", "-"),
                 "counterparty": counterparty,
-                "tx_hash": tx["tx_hash"],
-                "explorer": f"{settings.EXPLORER_BASE}{tx['tx_hash']}",
-                "date": tx["created_at"]
+                "tx_hash": tx.get("tx_hash", "-"),
+                "explorer": f"{settings.EXPLORER_BASE}{tx.get('tx_hash', '-')}",
+                "date": tx.get("created_at", "-"),
+                "invoice": tx.get("invoice_number", "-"),
+                "transfer_method": tx.get("token_symbol", "-"),
+                "gas_fee": gas_fee,
+                "transfer_amount": amount,
+                "total": total
             })
-            
+
         return {"status": "success", "data": formatted_history}
 
     except Exception as e:

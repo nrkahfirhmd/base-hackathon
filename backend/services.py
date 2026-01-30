@@ -190,26 +190,38 @@ def log_transaction(sender: str, receiver: str, amount: float, token: str, tx_ha
     """
     Mencatat transaksi Transfer/Payment ke database.
     """
+    import datetime
+    import random
     try:
+        now = datetime.datetime.now()
+        date_str = now.strftime('%Y%m%d')
+        rand_part = random.randint(1000, 9999)
+        invoice_number = f"INV-{date_str}{rand_part}"
+
         data = {
             "from_address": sender,
             "to_address": receiver,
             "amount": amount,
             "token_symbol": token,
             "tx_hash": tx_hash,
-            "status": "SUCCESS"
+            "status": "SUCCESS",
+            "invoice_number": invoice_number,
+            "created_at": now.isoformat(),
+            "gas_fee": 0  
         }
-        supabase.table("transactions").insert(data).execute()
+        response = supabase.table("transactions").insert(data).execute()
         print(f"Transaction Logged: {amount} {token} from {sender} to {receiver}")
+        if response.data and len(response.data) > 0:
+            return response.data[0]
         return data
     except Exception as e:
         print(f"Failed to log transaction: {e}")
+        raise
 
 def get_main_history(wallet: str):
     """
     Mengambil semua transaksi di mana user adalah PENGIRIM atau PENERIMA.
     """
-    # Supabase "or" syntax: column.operator.value,column.operator.value
     response = supabase.table("transactions")\
         .select("*")\
         .or_(f"from_address.eq.{wallet},to_address.eq.{wallet}")\
