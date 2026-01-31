@@ -73,7 +73,7 @@ export function useTokenRates(symbols: string[] = ["ETH", "USDC", "IDRX"]) {
   useEffect(() => {
     fetchRates();
 
-    const interval = setInterval(fetchRates, 60000);
+    const interval = setInterval(fetchRates, 300000);
 
     return () => clearInterval(interval);
   }, [fetchRates]);
