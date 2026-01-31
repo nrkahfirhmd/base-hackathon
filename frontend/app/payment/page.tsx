@@ -102,7 +102,7 @@ export default function PaymentPage() {
             </p>
           )}
 
-          <InputCard amount={amountIdr} />
+          <InputCard amount={amountIdr} currency={selectedCoin} />
 
           {invoiceId && (
             <p className="text-[10px] text-gray-500 mt-1">
@@ -138,9 +138,9 @@ export default function PaymentPage() {
             signer={signer}
             // Kirim status disabled ke tombol
             disabled={isMismatch}
-            onSuccess={() =>
+            onSuccess={(txHash?: string) =>
               router.push(
-                `/invoice?invoiceId=${invoiceId || ""}&idr=${amountIdr}&coin=${selectedCoin}&to=${merchantAddress}&from=${payerAddress || ""}&status=success`,
+                `/invoice?invoiceId=${invoiceId || ""}&idr=${amountIdr}&coin=${selectedCoin}&to=${merchantAddress}&from=${payerAddress || ""}&status=success${txHash ? `&tx=${txHash}` : ""}`,
               )
             }
           />

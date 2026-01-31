@@ -60,15 +60,16 @@ export default function ShowQrPage() {
         },
       });
 
+      
       if (res.success && res.invoiceId) {
         setInvoiceId(res.invoiceId); // Update state dengan ID baru
         setIsExpired(false); // Reset status expired
-
+        
         // Opsional: Update URL browser tanpa reload agar tetap sinkron
-        const newUrl = `/show-qr?invoiceId=${res.invoiceId}&amount=${amount}&currency=${currency}&txHash=${res.txHash}`;
+        const newUrl = `/show-qr?invoiceId=${res.invoiceId}&amount=${amount}&currency=${currency}`;
         window.history.replaceState(null, "", newUrl);
 
-        console.log("[ShowQrPage] New Invoice Created:", res.invoiceId);
+        console.log("[ShowQrPage] New Invoice Created:", res.txHash);
       }
     } catch (err) {
       console.error("Refresh failed:", err);
