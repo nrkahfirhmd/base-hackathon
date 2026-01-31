@@ -97,16 +97,16 @@ export default function PaymentPage() {
         <div className="mb-auto mt-16 w-full text-center">
           {merchantAddress && (
             <p className="text-blue-400 text-[10px] mb-2 font-mono opacity-70">
-              Recipient: {merchantAddress.slice(0, 6)}...
+              {/* Recipient: {merchantAddress.slice(0, 6)}... */}
               {merchantAddress.slice(-4)}
             </p>
           )}
 
-          <InputCard amount={amountIdr} />
+          <InputCard amount={amountIdr} currency={selectedCoin} />
 
           {invoiceId && (
             <p className="text-[10px] text-gray-500 mt-1">
-              Invoice ID: #{invoiceId}
+              {/* Invoice ID: #{invoiceId} */}
             </p>
           )}
         </div>
@@ -123,7 +123,7 @@ export default function PaymentPage() {
           {isMismatch && (
             <div className="mb-4 p-3 bg-red-500/10 border border-red-500/50 rounded-xl animate-pulse">
               <p className="text-red-400 text-center text-[11px] font-bold">
-                ⚠️ Currency Mismatch: Merchant requested {requiredCoin}. Please
+                Currency Mismatch: Merchant requested {requiredCoin}. Please
                 switch back to {requiredCoin} to pay.
               </p>
             </div>
