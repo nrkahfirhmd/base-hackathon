@@ -27,7 +27,7 @@ const SecondaryButton: React.FC<SecondaryButtonProps> = ({
       className={`
         ${fullWidth ? "w-full" : ""}
         py-4 px-8
-        rounded-3xl
+        rounded-2xl
         bg-transparent
         text-white/80 font-semibold text-md
         border-2 border-white/20
