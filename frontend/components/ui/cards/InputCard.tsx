@@ -11,9 +11,10 @@ const TOKEN_LIMITS = {
 interface InputCardProps {
   amount: string;
   currency: "USDC" | "IDRX"; // Tambahkan prop currency
+  isError?: boolean;
 }
 
-const InputCard: React.FC<InputCardProps> = ({ amount, currency }) => {
+const InputCard: React.FC<InputCardProps> = ({ amount, currency, isError }) => {
   const limits = TOKEN_LIMITS[currency];
 
   return (

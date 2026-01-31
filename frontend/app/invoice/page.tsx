@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
@@ -14,7 +15,7 @@ import InvoiceCard from "@/components/ui/cards/InvoiceCard";
 // Hooks
 import { useAddHistory } from "@/app/hooks/useTransactionHistory";
 
-export default function Invoice() {
+function InvoiceContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -190,5 +191,13 @@ export default function Invoice() {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+export default function Invoice() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#1B1E34] text-white flex items-center justify-center">Loading...</div>}>
+      <InvoiceContent />
+    </Suspense>
   );
 }
