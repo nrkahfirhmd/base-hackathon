@@ -86,10 +86,7 @@ def _fetch_live_apy_logic():
             for pool in data:
                 if pool.get('chain') != 'Base':
                     continue
-                
                 project = pool.get('project', '').lower()
-                if project not in trusted_protocols:
-                    continue
                 
                 apy = pool.get('apy', 0)
                 if apy <= 0 or apy > 100:
@@ -198,6 +195,13 @@ def _check_safety_logic(protocol: str, amount: float, current_apy: float):
     - Untuk testnet, batasi jumlah deposit <= 1 ETH.
     """
     trusted = {"moonwell", "aave-v3", "compound-v3", "spark"}
+
+def lending_withdraw(position_id: int, amount_lp: float, token: str):
+    return lending_withdraw_tool.invoke({
+        "position_id": position_id,
+        "amount_lp": amount_lp,
+        "token": token
+    })
     proto = (protocol or "").lower()
 
     if proto not in trusted:
@@ -549,7 +553,7 @@ def lending_deposit(protocol: str, amount: float, token: str):
     }
 
 @tool
-def lending_withdraw(position_id: int, amount_lp: float, token: str):
+def lending_withdraw_tool(position_id: int, amount_lp: float, token: str):
     """
     Gunakan tool ini untuk melakukan WITHDRAW (Tarik Dana) dari lending.
     
@@ -684,6 +688,14 @@ def lending_withdraw(position_id: int, amount_lp: float, token: str):
         "remaining_amount": max(0, remaining_amount),
         "message": f"Withdraw {withdraw_amount_base} {token_conf['symbol']} from {protocol} submitted"
     }
+
+# Wrapper Python murni agar bisa dipanggil backend langsung
+def lending_withdraw(position_id: int, amount_lp: float, token: str):
+    return lending_withdraw_tool.invoke({
+        "position_id": position_id,
+        "amount_lp": amount_lp,
+        "token": token
+    })
 
 _agent_excutor = None
 

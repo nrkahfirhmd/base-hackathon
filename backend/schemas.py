@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
     
 class VerificationRequest(BaseModel):
     wallet_address: str
@@ -146,3 +146,6 @@ class AddHistoryResponse(BaseModel):
     
 class ViewHistoryRequest(BaseModel):
     wallet: str
+
+class TokenRateRequest(BaseModel):
+    symbols: List[str]

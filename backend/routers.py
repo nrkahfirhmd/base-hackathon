@@ -6,7 +6,7 @@ from config import settings
 from schemas import RateResponse, VerificationRequest
 from schemas import InfoRequest, InfoResponse
 from schemas import AddHistoryRequest, AddHistoryResponse
-from schemas import ViewHistoryRequest
+from schemas import ViewHistoryRequest, TokenRateRequest
 from schemas import (
     LendingRecommendRequest,
     LendingRecommendResponse,
@@ -27,10 +27,11 @@ from services import (
     get_lending_recommendation,
     lending_get_positions_with_profit,
     get_lending_projects,
+    get_dynamic_market_rates
 )
 from services import verify_info, get_main_history, log_transaction
 
-from agent import get_agent_executor
+from agent import get_agent_executor, lending_withdraw
 
 router = APIRouter(prefix="/api", tags=["core"])
 
@@ -200,32 +201,49 @@ def lending_info():
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# @router.post("/lending/withdraw", response_model=LendingWithdrawResponse)
-# def lending_withdraw_endpoint(req: LendingWithdrawRequest):
-#     try:
-#         data = lending_withdraw(req.id, req.amount, req.token)
-#         return {
-#             "status": "submitted",
-#             "protocol": data.get("protocol", ""),
-#             "tx_hash": data["tx_hash"],
-#             "explorer_url": data["explorer_url"],
-#             "withdraw_time": data.get("withdraw_time", ""),
-#             "principal": data.get("principal", 0),
-#             "current_profit": data.get("profit", 0),
-#             "current_profit_pct": data.get("profit_pct", 0),
-#             "withdrawn": data.get("withdrawn", 0),
-#             "total_received": data.get("profit", 0) + data.get("withdrawn", 0),
-#             "remaining_amount": data.get("remaining_amount", 0),
-#             "message": data["message"]
-#         }
-#     except Exception as e:
-#         print(f"Error Agent: {str(e)}")
-#         raise HTTPException(status_code=500, detail=f"Agent gagal mengeksekusi: {str(e)}")
+@router.post("/lending/withdraw", response_model=LendingWithdrawResponse)
+def lending_withdraw_endpoint(req: LendingWithdrawRequest):
+    try:
+        data = lending_withdraw(req.id, req.amount, req.token)
+        return {
+            "status": "submitted",
+            "protocol": data.get("protocol", ""),
+            "tx_hash": data["tx_hash"],
+            "explorer_url": data["explorer_url"],
+            "withdraw_time": data.get("withdraw_time", ""),
+            "principal": data.get("principal", 0),
+            "current_profit": data.get("profit", 0),
+            "current_profit_pct": data.get("profit_pct", 0),
+            "withdrawn": data.get("withdrawn", 0),
+            "total_received": data.get("profit", 0) + data.get("withdrawn", 0),
+            "remaining_amount": data.get("remaining_amount", 0),
+            "message": data["message"]
+        }
+    except Exception as e:
+        print(f"Error Agent: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Agent gagal mengeksekusi: {str(e)}")
     
 @router.post("/history/add", response_model=AddHistoryResponse)
 def add_history(req: AddHistoryRequest):
     try:
-        return log_transaction(req.sender, req.receiver, req.amount, req.token, req.tx_hash)
+        tx = log_transaction(
+            req.sender, req.receiver, req.amount, req.token, req.tx_hash
+        )
+        response = {
+            "from_address": tx.get("from_address", "-"),
+            "to_address": tx.get("to_address", "-"),
+            "amount": tx.get("amount", 0),
+            "token_symbol": tx.get("token_symbol", "-"),
+            "tx_hash": tx.get("tx_hash", "-"),
+            "status": tx.get("status", "SUCCESS"),
+            "invoice": tx.get("invoice_number", "-"),
+            "date": tx.get("created_at", "-"),
+            "transfer_method": tx.get("token_symbol", "-"),
+            "gas_fee": tx.get("gas_fee", 0),
+            "transfer_amount": tx.get("amount", 0),
+            "total": (float(tx.get("amount", 0)) + float(tx.get("gas_fee", 0))) if tx.get("amount") is not None and tx.get("gas_fee") is not None else 0
+        }
+        return response
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -237,29 +255,50 @@ def transaction_history_endpoint(req: ViewHistoryRequest):
     try:
         my_wallet = req.wallet
         raw_data = get_main_history(my_wallet)
-        
+
         formatted_history = []
-        
+
         for tx in raw_data:
             if tx["from_address"].lower() == my_wallet.lower():
                 direction = "OUT"
-                counterparty = tx["to_address"] 
+                counterparty = tx["to_address"]
             else:
                 direction = "IN"
-                counterparty = tx["from_address"] 
-            
+                counterparty = tx["from_address"]
+
+            amount = float(tx.get("amount", 0))
+            gas_fee = float(tx.get("gas_fee", 0))
+            total = amount + gas_fee
+
             formatted_history.append({
-                "id": tx["id"],
-                "type": direction,      
-                "amount": tx["amount"],
-                "token": tx["token_symbol"],
+                "id": tx.get("id"),
+                "type": direction,
+                "amount": amount,
+                "token": tx.get("token_symbol", "-"),
                 "counterparty": counterparty,
-                "tx_hash": tx["tx_hash"],
-                "explorer": f"{settings.EXPLORER_BASE}{tx['tx_hash']}",
-                "date": tx["created_at"]
+                "tx_hash": tx.get("tx_hash", "-"),
+                "explorer": f"{settings.EXPLORER_BASE}{tx.get('tx_hash', '-')}",
+                "date": tx.get("created_at", "-"),
+                "invoice": tx.get("invoice_number", "-"),
+                "transfer_method": tx.get("token_symbol", "-"),
+                "gas_fee": gas_fee,
+                "transfer_amount": amount,
+                "total": total
             })
-            
+
         return {"status": "success", "data": formatted_history}
 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@router.post("/tokens/rates")
+def get_token_prices(req: TokenRateRequest):
+    """
+    Get realtime crypto prices (ETH, USDC, IDRX).
+    Cached for 60 seconds to prevent rate limiting.
+    """
+    try:
+        data = get_dynamic_market_rates(req.symbols)
+        return {"status": "success", "data": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
