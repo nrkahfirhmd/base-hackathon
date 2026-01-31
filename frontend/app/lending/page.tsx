@@ -166,9 +166,6 @@ export default function LendingPage() {
               <option value="usdc" className="bg-[#252A42] text-white">
                 USDC
               </option>
-              <option value="idrx" className="bg-[#252A42] text-white">
-                IDRX
-              </option>
             </select>
           </div>
 

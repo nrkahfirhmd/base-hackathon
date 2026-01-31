@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { ProjectItem, DepositResponse } from "@/app/hooks/useLending";
 import PrimaryButton from "@/components/ui/buttons/PrimaryButton";
 import SecondaryButton from "@/components/ui/buttons/SecondaryButton";
+import { useAccount } from "wagmi";
 
 interface Props {
   open: boolean;
@@ -15,6 +16,7 @@ interface Props {
     protocol: string;
     token: string;
     amount: number;
+    wallet_address: string;
   }) => Promise<DepositResponse | null>;
 }
 
@@ -32,6 +34,7 @@ export default function DepositModal({
   const [result, setResult] = useState<DepositResponse | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [token, setToken] = useState<string>("USDC");
+  const { address } = useAccount();
 
   useEffect(() => {
     if (project) {
@@ -76,6 +79,7 @@ export default function DepositModal({
         protocol: project.protocol,
         token: mappedToken,
         amount: Number(amount),
+        wallet_address: address || "",
       });
 
       setResult(res);
@@ -133,7 +137,7 @@ export default function DepositModal({
               ).map((t: string) => {
                 const display = /^[wm]/i.test(t) && t.length > 1 ? t.slice(1) : t;
                 return (
-                  <option key={t} value={t}>
+                  <option key={t} value={t} className="bg-[#252A42] text-white">
                     {display.toUpperCase()}
                   </option>
                 );

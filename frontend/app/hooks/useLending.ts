@@ -30,6 +30,7 @@ export interface DepositPayload {
   protocol: string;
   token: string;
   amount: number;
+  wallet_address: string;
 }
 
 export interface DepositResponse {
@@ -193,7 +194,7 @@ export function useLending() {
       const res = await fetch(`${API_URL}/api/lending/info`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wallet_address: address }),
+        body: JSON.stringify({ wallet: address }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Gagal mengambil info lending");
