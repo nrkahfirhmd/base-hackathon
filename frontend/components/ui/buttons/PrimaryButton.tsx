@@ -31,6 +31,7 @@ const PrimaryButton: React.FC<PrimaryButtonProps> = ({
         bg-linear-to-b from-[#4338ca] via-[#5b21b6] to-[#7c3aed]
         text-white font-semibold text-md
         disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
+        cursor-pointer
         ${className}
       `}
     >
