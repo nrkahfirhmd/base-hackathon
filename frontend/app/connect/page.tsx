@@ -25,7 +25,7 @@ export default function ConnectPage() {
           <div className="p-1 rounded-3xl bg-linear-to-tr from-blue-500 to-purple-500 shadow-lg shadow-purple-500/20">
             <div className="bg-[#1B1E34] rounded-[22px] p-2">
               <Image
-                src="/logo.png"
+                src="/Logo.png"
                 alt="App Logo"
                 width={120}
                 height={120}
