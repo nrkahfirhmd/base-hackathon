@@ -204,20 +204,31 @@ def log_transaction(sender: str, receiver: str, amount: float, token: str, tx_ha
         date_str = now.strftime('%Y%m%d')
         rand_part = random.randint(1000, 9999)
         invoice_number = f"INV-{date_str}{rand_part}"
+        gas_fee = 0
+        try:
+            receipt = w3_lending.eth.get_transaction_receipt(tx_hash)
+            gas_used = receipt['gasUsed']
+            gas_price = receipt.get('effectiveGasPrice', receipt.get('gasPrice'))
+            if gas_price is not None:
+                gas_fee_wei = gas_used * gas_price
+                gas_fee = float(w3_lending.fromWei(gas_fee_wei, 'ether'))
+        except Exception as e:
+            print(f"Gagal fetch gas fee dari chain: {e}")
+            gas_fee = 0
 
         data = {
             "from_address": sender,
-            "to_address": receiver,
+            "to_address": receiver, 
             "amount": amount,
             "token_symbol": token,
             "tx_hash": tx_hash,
             "status": "SUCCESS",
             "invoice_number": invoice_number,
             "created_at": now.isoformat(),
-            "gas_fee": 0  
+            "gas_fee": gas_fee
         }
         response = supabase.table("transactions").insert(data).execute()
-        print(f"Transaction Logged: {amount} {token} from {sender} to {receiver}")
+        print(f"Transaction Logged: {amount} {token} from {sender} to {receiver} | Gas Fee: {gas_fee}")
         if response.data and len(response.data) > 0:
             return response.data[0]
         return data
