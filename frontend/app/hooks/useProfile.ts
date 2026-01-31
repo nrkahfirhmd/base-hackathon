@@ -132,7 +132,7 @@ export function useUpdateProfile() {
     image?: File;
   }
 
-  const updateProfile = async (params: UpdateProfileParams): Promise<{ success: boolean; message?: string }> => {
+  const updateProfile = async (params: UpdateProfileParams): Promise<{ success: boolean; data?: any; message?: string }> => {
     setError(null);
     setIsUpdating(true);
 
@@ -158,7 +158,8 @@ export function useUpdateProfile() {
 
       if (response.ok && data.status === 'success') {
         setIsUpdating(false);
-        return { success: true };
+        // return the updated profile data from the server (data.data)
+        return { success: true, data: data.data };
       } else {
         const errorMsg = data.message || 'Failed to update profile';
         setError(errorMsg);

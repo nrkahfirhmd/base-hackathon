@@ -11,42 +11,37 @@ import Image from "next/image";
 import { JsonRpcSigner } from "ethers";
 import { useInvoice } from "@/app/hooks/useInvoice";
 
-interface PaymentConfirmationButtonProps {
-  // onSuccess now receives optional txHash from payInvoice
-  onSuccess: (txHash?: string) => void;
+interface ShowQrConfirmationButtonProps {
+  onSuccess: (invoiceId: string) => void;
   amount: string;
-  recipient: string;
+  merchant: string | undefined;
   signer: JsonRpcSigner | undefined;
-  invoiceId: string | null;
   currency: "USDC" | "IDRX";
   onCurrencyChange: (coin: "USDC" | "IDRX") => void;
   className?: string;
-  disabled?: boolean; // Prop baru untuk validasi koin
+  disabled?: boolean; // Prop baru untuk validasi
 }
 
-const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
+const ShowQrConfirmationButton: React.FC<ShowQrConfirmationButtonProps> = ({
   onSuccess,
   amount,
-  recipient,
+  merchant,
   signer,
-  invoiceId,
   currency,
   onCurrencyChange,
   className = "",
-  disabled = false, // Default false
+  disabled = false,
 }) => {
   const [isComplete, setIsComplete] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-
-  const { payInvoice, isLoading: isBlockchainLoading } = useInvoice();
   const [isInternalLoading, setIsInternalLoading] = useState(false);
 
+  const { createInvoice, isLoading: isBlockchainLoading } = useInvoice();
   const isLoading = isInternalLoading || isBlockchainLoading;
 
   const x = useMotionValue(0);
   const textOpacity = useTransform(x, [0, 140], [1, 0]);
 
-  // --- LOGIKA IKON ---
   const getIconUrl = (symbol: string) => {
     if (symbol.toUpperCase() === "IDRX") {
       return "/IDRX-Logo.png";
@@ -56,8 +51,8 @@ const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
   };
 
   const handleDragEnd = async (_: any, info: any) => {
-    // JANGAN PROSES jika tombol dalam keadaan disabled (mismatch currency)
-    if (disabled) {
+    // PROTEKSI: Jika disabled, kembalikan ke posisi awal
+    if (disabled || isLoading) {
       x.set(0);
       return;
     }
@@ -66,26 +61,30 @@ const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
       setIsMenuOpen(false);
     }
 
-    if (info.offset.x > 180 && !isLoading && signer && recipient) {
+    if (info.offset.x > 200 && signer && merchant) {
       setIsInternalLoading(true);
 
       try {
-        if (invoiceId) {
-            const result = await payInvoice(invoiceId);
+        const result = await createInvoice({
+          merchant: merchant,
+          amount: amount,
+          tokenType: currency,
+          metadata: {
+            fiatAmount: amount,
+            fiatCurrency: "IDR",
+            createdAt: new Date().toISOString(),
+          },
+        });
 
-            if (result.success) {
-              setIsComplete(true);
-              onSuccess(result.txHash);
-            } else {
-              throw new Error(result.error);
-            }
-          } else {
-            setIsComplete(true);
-            onSuccess();
-          }
+        if (result.success && result.invoiceId) {
+          setIsComplete(true);
+          onSuccess(result.invoiceId);
+        } else {
+          throw new Error(result.error || "Gagal membuat invoice");
+        }
       } catch (err: any) {
-        console.error("Payment Failed:", err);
-        alert("Pembayaran Gagal: " + err.message);
+        console.error("Blockchain Error:", err);
+        alert("Gagal: " + err.message);
         x.set(0);
       } finally {
         setIsInternalLoading(false);
@@ -97,18 +96,20 @@ const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
 
   return (
     <div
-      className={`relative w-full max-w-md h-18 rounded-2xl p-2 flex items-center shadow-2xl border border-white/10 transition-all duration-300 ${className} 
-        ${disabled ? "bg-gray-800 opacity-60 grayscale cursor-not-allowed" : "bg-linear-to-b from-[#281a45] via-[#3b2a6e] to-[#6a3eb7]"} 
+      className={`relative w-full max-w-md h-[72px] rounded-2xl transition-all duration-300
+        ${disabled ? "bg-gray-800 opacity-60 grayscale" : "bg-linear-to-b from-[#1e1b4b] via-[#312e81] to-[#4338ca]"}
+        p-2 flex items-center shadow-2xl border border-white/10 ${className} 
         ${isLoading ? "opacity-70 pointer-events-none" : ""}`}
     >
       <motion.div
         style={{ opacity: textOpacity }}
-        className="absolute inset-0 flex items-center justify-end pr-10 text-white font-semibold text-lg pointer-events-none tracking-wide"
+        className={`absolute inset-0 flex items-center justify-end pr-10 font-semibold text-lg pointer-events-none tracking-wide transition-colors
+          ${disabled ? "text-red-400/50" : "text-white/20"}`}
       >
-        {disabled
-          ? "Currency Mismatch"
-          : isLoading
-            ? "Processing..."
+        {isLoading
+          ? "Processing Blockchain..."
+          : disabled
+            ? "Invalid Amount"
             : ""}
       </motion.div>
 
@@ -118,7 +119,7 @@ const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
             initial={{ opacity: 0, y: 10, scale: 0.95 }}
             animate={{ opacity: 1, y: -8, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            className="absolute bottom-full left-2 mb-2 w-35 bg-[#281a45]/95 backdrop-blur-2xl rounded-2xl border border-white/10 p-2 shadow-2xl z-50"
+            className="absolute bottom-full left-2 mb-2 w-35 bg-[#1e1b4b]/95 backdrop-blur-2xl rounded-2xl border border-white/10 p-2 shadow-2xl z-50"
           >
             {(["USDC", "IDRX"] as const).map((coin) => (
               <button
@@ -151,14 +152,14 @@ const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
       </AnimatePresence>
 
       <motion.div
-        drag={isLoading || disabled ? false : "x"} // Matikan drag jika loading atau disabled
-        dragConstraints={{ left: 0, right: 230 }}
+        drag={isLoading || disabled ? false : "x"} // Matikan drag jika invalid
+        dragConstraints={{ left: 0, right: 280 }}
         dragElastic={0.02}
         dragMomentum={false}
         style={{ x }}
         onDragEnd={handleDragEnd}
         onTap={() => !isLoading && setIsMenuOpen(!isMenuOpen)}
-        animate={isComplete ? { x: 300, opacity: 0 } : {}}
+        animate={isComplete ? { x: 320, opacity: 0 } : {}}
         className={`relative z-10 h-14 pl-4 pr-3 backdrop-blur-xl rounded-2xl flex items-center gap-2 shadow-lg border border-white/20 transition-colors
           ${disabled ? "bg-white/5 cursor-not-allowed" : "bg-white/10 cursor-grab active:cursor-grabbing hover:bg-white/20"}`}
       >
@@ -183,29 +184,27 @@ const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
 
         <div className="flex flex-col leading-tight pointer-events-none">
           <span
-            className={`font-bold text-lg tracking-tight ${disabled ? "text-white/30" : "text-white"}`}
+            className={`font-bold text-lg tracking-tight ${disabled ? "text-white/20" : "text-white"}`}
           >
-            {amount}
+            {amount || "0"}
           </span>
           <span
-            className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 ${disabled ? "text-white/20" : "text-white/50"}`}
+            className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 ${disabled ? "text-white/10" : "text-white/50"}`}
           >
             {currency}
-            {!disabled && (
-              <svg
-                className={`w-2 h-2 transition-transform ${isMenuOpen ? "rotate-180" : ""}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={3}
-                  d="M5 15l7-7 7 7"
-                />
-              </svg>
-            )}
+            <svg
+              className={`w-2 h-2 transition-transform ${isMenuOpen ? "rotate-180" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={3}
+                d="M5 15l7-7 7 7"
+              />
+            </svg>
           </span>
         </div>
 
@@ -230,4 +229,4 @@ const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
   );
 };
 
-export default PaymentConfirmationButton;
+export default ShowQrConfirmationButton;

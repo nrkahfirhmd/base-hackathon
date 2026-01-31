@@ -14,7 +14,7 @@ export function AccountConnect({ className }: AccountConnectProps) {
           // Kita jadikan styling gradien Anda sebagai default
           className={
             className ||
-            "w-full py-4 px-8 rounded-2xl bg-linear-to-b from-[#4338ca] via-[#5b21b6] to-[#7c3aed] text-white font-semibold text-md transition-all hover:brightness-110 active:scale-95"
+            "w-full py-4 px-8 rounded-2xl bg-linear-to-b from-[#4338ca] via-[#5b21b6] to-[#7c3aed] text-white/80! font-bold! text-md"
           }
         />
       </Wallet>

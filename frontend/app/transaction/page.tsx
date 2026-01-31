@@ -2,59 +2,13 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import TransactionHistoryCard, {
-  Transaction,
-} from "@/components/ui/cards/TransactionHistoryCard";
-
-const mockTransactions: Transaction[] = [
-  {
-    id: "1",
-    name: "Dzikri Basyril Muminin",
-    date: "28 January 2026",
-    time: "19:37",
-    amountIdr: "5.092,92",
-    amountCrypto: "0,023",
-    currency: "BTC",
-    type: "out",
-    status: "Failed",
-  },
-  {
-    id: "2",
-    name: "Dzikri Basyril Muminin",
-    date: "28 January 2026",
-    time: "19:37",
-    amountIdr: "5.092,92",
-    amountCrypto: "0,023",
-    currency: "BTC",
-    type: "out",
-    status: "Succeed",
-  },
-  {
-    id: "3",
-    name: "Dzikri Basyril Muminin",
-    date: "28 January 2026",
-    time: "19:37",
-    amountIdr: "5.092,92",
-    amountCrypto: "0,023",
-    currency: "ETH",
-    type: "out",
-    status: "Pending",
-  },
-  {
-    id: "4",
-    name: "Dzikri Basyril Muminin",
-    date: "28 January 2026",
-    time: "19:37",
-    amountIdr: "5.092,92",
-    amountCrypto: "0,023",
-    currency: "BTC",
-    type: "in",
-    status: "Succeed",
-  },
-];
+import TransactionHistoryCard from "@/components/ui/cards/TransactionHistoryCard";
+import { useTransactionHistory } from "@/app/hooks/useTransactionHistory";
 
 export default function TransactionPage() {
   const router = useRouter();
+  // Use real data from API via hook (must be inside component)
+  const { transactions, isLoading, error, refetch } = useTransactionHistory();
 
   return (
     <div className="min-h-screen bg-[#1B1E34] p-6 font-sans">
@@ -85,9 +39,15 @@ export default function TransactionPage() {
 
       {/* Daftar Transaksi */}
       <div className="max-w-2xl mx-auto">
-        {mockTransactions.map((tx) => (
-          <TransactionHistoryCard key={tx.id} transaction={tx} />
-        ))}
+        {isLoading ? (
+          <p className="text-white/60">Loading transactions...</p>
+        ) : error ? (
+          <div className="text-red-400">{error} <button onClick={() => refetch()} className="underline ml-2">Retry</button></div>
+        ) : transactions.length === 0 ? (
+          <p className="text-white/60">No transactions found.</p>
+        ) : (
+          transactions.map((tx) => <TransactionHistoryCard key={tx.id} transaction={tx} />)
+        )}
       </div>
     </div>
   );

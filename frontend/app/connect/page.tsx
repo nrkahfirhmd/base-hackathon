@@ -5,12 +5,10 @@ import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
 import Image from "next/image";
 import { AccountConnect } from "@/components/wallet/AccountConnect";
-import { useProfile } from "@/app/hooks/useProfile";
 
 export default function ConnectPage() {
   const router = useRouter();
   const { isConnected } = useAccount();
-  const { profile, isLoading: isLoadingProfile, setProfile } = useProfile();
 
   // Logic redirect: Jika sudah konek, lempar ke dashboard/home
   useEffect(() => {
@@ -25,27 +23,34 @@ export default function ConnectPage() {
       <div className="mb-12 text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
         <div className="mb-6 flex justify-center">
           <div className="p-1 rounded-3xl bg-linear-to-tr from-blue-500 to-purple-500 shadow-lg shadow-purple-500/20">
-            <div className="bg-[#1B1E34] rounded-[22px] p-1">
+            <div className="bg-[#1B1E34] rounded-[22px] p-2">
               <Image
                 src="/logo.png"
                 alt="App Logo"
-                width={100}
-                height={100}
+                width={120}
+                height={120}
                 className="rounded-2xl"
                 priority
               />
             </div>
           </div>
         </div>
-        <h1 className="text-3xl font-bold mb-2 tracking-tight">Welcome Back</h1>
-        <p className="text-gray-400 text-sm">
-          Connect your wallet to get started
-        </p>
-      </div>
 
-      {/* Gunakan Komponen Modular Kita */}
-      <div className="w-full max-w-sm">
-        <AccountConnect />
+        <h1 className="text-3xl font-bold mb-20 tracking-tight">Welcome Back</h1>
+
+        <div className="flex items-center gap-2 w-full justify-center">
+          <div className="flex-1 h-0.5 bg-white/40 rounded-full" />
+          <p className="text-white/50 text-sm font-medium">Connect wallet to continue</p>
+          <div className="flex-1 h-0.5 bg-white/40 rounded-full" />
+        </div>
+
+        {/* Gunakan Komponen Modular Kita */}
+        <div className="w-full max-w-sm pt-6">
+            <AccountConnect />
+            <div className="mt-8 mx-8 text-center text-xs text-gray-400">
+              Supported: MetaMask · WalletConnect · Coinbase Wallet
+          </div>
+        </div>
       </div>
 
       {/* Footer Info */}

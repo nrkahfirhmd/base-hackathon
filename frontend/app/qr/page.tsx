@@ -4,42 +4,35 @@ import { useRouter } from "next/navigation";
 import { Scanner } from "@yudiel/react-qr-scanner";
 import ScanQrOverlay from "@/components/ui/ScanQrOverlay";
 import ShowQrNavigation from "../../components/ui/ShowQrNav";
-
 export default function Qr() {
   const router = useRouter();
 
   const handleScan = (result: any) => {
     const rawValue = result?.[0]?.rawValue;
+    if (!rawValue) return;
 
-    if (rawValue) {
-      console.log("QR Terdeteksi:", rawValue);
+    try {
+      const url = new URL(rawValue);
+      const invoiceId = url.searchParams.get("invoiceId");
+      const amount = url.searchParams.get("amount");
+      const recipient =
+        url.searchParams.get("recipient") || url.searchParams.get("merchant");
 
-      try {
-        // 1. Parsing teks QR menjadi objek URL
-        const url = new URL(rawValue);
+      // SEKARANG: Semua lempar ke /payment
+      // Kita bawa semua parameter yang mungkin ada
+      let targetPath = `/payment?`;
+      if (invoiceId) targetPath += `invoiceId=${invoiceId}&`;
+      if (amount) targetPath += `amount=${amount}&`;
+      if (recipient) targetPath += `recipient=${recipient}&`;
 
-        // 2. Ambil Query Params saja (misal: ?amount=100&recipient=0x...)
-        const searchParams = url.search;
-
-        // 3. Paksa arahkan ke /payment, bukan url.pathname
-        if (searchParams) {
-          router.push(`/payment${searchParams}`);
-        } else {
-          // Jika QR tidak punya params, tetap lempar ke payment
-          router.push(`/payment`);
-        }
-      } catch (error) {
-        // Fallback jika QR bukan format URL (misal hanya teks mentah)
-        console.error(
-          "Format QR tidak valid sebagai URL, mencoba parsing manual...",
-        );
-
-        if (rawValue.includes("?")) {
-          const manualParams = rawValue.substring(rawValue.indexOf("?"));
-          router.push(`/payment${manualParams}`);
-        } else {
-          console.error("QR tidak mengandung parameter data.");
-        }
+      router.push(targetPath);
+    } catch {
+      // Parsing manual jika format bukan URL lengkap
+      if (rawValue.includes("invoiceId=")) {
+        const id = rawValue.match(/invoiceId=(\d+)/)?.[1];
+        router.push(`/payment?invoiceId=${id}`);
+      } else {
+        router.push(`/payment?recipient=${rawValue}`);
       }
     }
   };
@@ -79,7 +72,6 @@ export default function Qr() {
             video: { width: "100%", height: "100%", objectFit: "cover" },
           }}
           components={{
-            audio: false,
             finder: false,
           }}
         />
