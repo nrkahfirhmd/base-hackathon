@@ -38,7 +38,7 @@ export function useTransactionHistory(): UseTransactionHistoryReturn {
     setError(null);
 
     try {
-      const response = await fetch(`${API_URL}/history/transactions`, {
+      const response = await fetch(`${API_URL}/api/history/transactions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -55,7 +55,19 @@ export function useTransactionHistory(): UseTransactionHistoryReturn {
       const data = await response.json();
 
       if (data.status === 'success' && Array.isArray(data.data)) {
-        setTransactions(data.data);
+        // Normalize returned items to our Transaction shape so components can rely on fields
+        const normalized = data.data.map((t: any) => ({
+          id: String(t.id ?? t.tx_hash ?? t.tx ?? ''),
+          type: (t.type || 'OUT') as 'IN' | 'OUT',
+          amount: t.amount ?? 0,
+          token: t.token ?? t.transfer_method ?? '',
+          counterparty: t.counterparty ?? t.to ?? t.from ?? '',
+          tx_hash: t.tx_hash ?? t.tx ?? '',
+          explorer: t.explorer ?? (t.tx_hash ? `${process.env.NEXT_PUBLIC_EXPLORER_BASE || ''}${t.tx_hash}` : ''),
+          date: t.date ?? t.created_at ?? new Date().toISOString(),
+        }));
+
+        setTransactions(normalized);
       } else {
         throw new Error('Invalid response format');
       }
