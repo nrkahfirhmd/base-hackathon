@@ -10,8 +10,9 @@ import ScanQrNavigation from "../../components/ui/ScanQrNav";
 import SecondaryButton from "@/components/ui/buttons/SecondaryButton";
 import { useProfile } from "@/app/hooks/useProfile";
 import { useInvoice } from "@/app/hooks/useInvoice";
+import { Suspense } from "react";
 
-export default function ShowQrPage() {
+function ShowQrContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { address } = useAccount();
@@ -47,8 +48,6 @@ export default function ShowQrPage() {
 
     setIsRefreshing(true);
     try {
-      console.log("[ShowQrPage] Regenerating invoice on-chain...");
-
       const res = await createInvoice({
         merchant: address,
         amount: amount,
@@ -69,7 +68,6 @@ export default function ShowQrPage() {
         const newUrl = `/show-qr?invoiceId=${res.invoiceId}&amount=${amount}&currency=${currency}`;
         window.history.replaceState(null, "", newUrl);
 
-        console.log("[ShowQrPage] New Invoice Created:", res.txHash);
       }
     } catch (err) {
       console.error("Refresh failed:", err);
@@ -83,7 +81,6 @@ export default function ShowQrPage() {
     // Monitoring ID yang sedang aktif (akan restart otomatis jika invoiceId berubah)
     if (!invoiceId || status !== "waiting" || isExpired) return;
 
-    console.log("[ShowQrPage] Monitoring ID:", invoiceId);
 
     const { stop } = watchInvoiceStatus(invoiceId, {
       onPaid: (data: any) => {
@@ -191,5 +188,13 @@ export default function ShowQrPage() {
 
       <ScanQrNavigation />
     </div>
+  );
+}
+
+export default function ShowQrPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#1B1E34] text-white flex items-center justify-center">Loading...</div>}>
+      <ShowQrContent />
+    </Suspense>
   );
 }

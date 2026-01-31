@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAccount } from "wagmi";
 import { useEthersSigner } from "@/app/hooks/useEthers";
@@ -10,7 +11,7 @@ import Numpad from "@/components/ui/buttons/NumpadButton";
 import InputCard from "@/components/ui/cards/InputCard";
 import PaymentConfirmationButton from "@/components/ui/buttons/PaymentConfirmationButton";
 
-export default function PaymentPage() {
+function PaymentContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const signer = useEthersSigner({ chainId: CHAIN_ID });
@@ -145,5 +146,13 @@ export default function PaymentPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PaymentPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#1B1E34] text-white flex items-center justify-center">Loading...</div>}>
+      <PaymentContent />
+    </Suspense>
   );
 }

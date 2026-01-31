@@ -118,7 +118,6 @@ export function useInvoice() {
   // PAYER: Membayar Invoice
   const payInvoice = useCallback(
     async (invoiceId: string) => {
-      console.log(`[Payer] Memulai proses bayar untuk ID: ${invoiceId}`);
       setIsLoading(true);
 
       try {
@@ -132,24 +131,16 @@ export function useInvoice() {
 
         // 2. APPROVE Token
         const tokenContract = new Contract(tokenAddress, ERC20_ABI, signer);
-        console.log(
-          `[Payer] Menyetujui penarikan ${amountWei.toString()} unit token...`,
-        );
 
         const appTx = await tokenContract.approve(
           INVOICE_CONTRACT_ADDRESS,
           amountWei,
         );
         await appTx.wait();
-        console.log("[Payer] Approve BERHASIL.");
 
         // 3. Eksekusi Pembayaran
-        console.log(
-          "[Payer] Mengeksekusi fungsi payInvoice di Smart Contract...",
-        );
         const tx = await contract.payInvoice(invoiceId);
         const receipt = await tx.wait();
-        console.log("[Payer] Pembayaran SUKSES di Blockchain!", receipt.hash);
 
         setIsLoading(false);
         return { success: true, txHash: receipt.hash };
