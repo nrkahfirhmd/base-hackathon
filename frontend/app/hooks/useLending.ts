@@ -183,13 +183,18 @@ export function useLending() {
     [],
   );
 
-  const getInfo = useCallback(async () => {
+  const getInfo = useCallback(async (address: string) => {
     if (!API_URL) throw new Error("API URL not configured");
+    if (!address) throw new Error("Address is required");
 
     setIsLoadingInfo(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/lending/info`);
+      const res = await fetch(`${API_URL}/api/lending/info`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet_address: address }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Gagal mengambil info lending");
       return data as InfoResponse;

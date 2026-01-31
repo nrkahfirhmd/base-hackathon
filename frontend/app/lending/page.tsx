@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useLending, ProjectItem, RecommendResponse } from "@/app/hooks/useLending";
+import { useLending, ProjectItem, RecommendResponse, InfoResponse } from "@/app/hooks/useLending";
+import { useAccount } from "wagmi";
 import BalanceCard from "@/components/ui/cards/BalanceCard";
 import PrimaryButton from "@/components/ui/buttons/PrimaryButton";
 import SecondaryButton from "@/components/ui/buttons/SecondaryButton";
@@ -18,8 +19,10 @@ export default function LendingPage() {
     recommend,
     fetchProjects,
     deposit,
+    getInfo,
     withdraw,
     isLoadingRecommend,
+    isLoadingInfo,
     error: lendingError,
   } = useLending();
 
@@ -35,6 +38,20 @@ export default function LendingPage() {
 
   const [amountInput, setAmountInput] = useState("1");
   const [token, setToken] = useState("eth");
+
+  const [info, setInfo] = useState<InfoResponse | null>(null);
+  const { address } = useAccount();
+
+  useEffect(() => {
+    if (!address) {
+      setInfo(null);
+      return;
+    }
+    (async () => {
+      const res = await getInfo(address as string);
+      setInfo(res);
+    })();
+  }, [address, getInfo]);
 
   // Reuse portfolio hooks to populate BalanceCard
   const { cryptoAssets, assetsWithBalance, isLoading: isBalanceLoading } = useCryptoBalances();
@@ -278,31 +295,53 @@ export default function LendingPage() {
       <section>
         <h2 className="text-gray-400 text-sm mb-4">Your Lending Positions</h2>
 
-        <div className="grid gap-3 mb-4">
-          <div className="flex items-center justify-between rounded-xl border bg-linear-to-br from-[#2b2b3d] to-[#1a1a24] border border-gray-800 shadow-lg p-4">
-            <div>
-              <div className="text-white font-semibold">WETH · Compound V3</div>
-              <div className="text-white/60 text-sm">
-                Principal: 100 ETH · Profit: 1.93 ETH
-              </div>
-            </div>
+        {isLoadingInfo ? (
+          <div className="text-center text-gray-400 py-4 italic">Loading positions...</div>
+        ) : info && info.positions && info.positions.length > 0 ? (
+          <div className="grid gap-3 mb-4">
+            {info.positions.map((pos, idx) => {
+              let title = typeof pos === "string" ? pos : JSON.stringify(pos);
+              let details = "";
+              let id: number = idx;
+              try {
+                const parsed = typeof pos === "string" ? JSON.parse(pos) : (pos as any);
+                if (parsed) {
+                  title = `${parsed.token ?? parsed.symbol ?? ""} · ${parsed.protocol ?? ""}`.trim();
+                  details = `Principal: ${parsed.principal ?? parsed.amount ?? 0} ${parsed.token ?? parsed.symbol ?? ""} · Profit: ${parsed.profit ?? parsed.current_profit ?? 0}`;
+                  id = parsed.id ?? parsed.position_id ?? idx;
+                }
+              } catch (e) {
+                // keep fallback strings
+              }
 
-            <PrimaryButton
-              onClick={() => {
-                setSelectedPositionId(1);
-                setShowWithdrawModal(true);
-              }}
-              fullWidth={false}
-            >
-              Withdraw
-            </PrimaryButton>
+              return (
+                <div key={idx} className="flex items-center justify-between rounded-xl border bg-linear-to-br from-[#2b2b3d] to-[#1a1a24] border border-gray-800 shadow-lg p-4">
+                  <div>
+                    <div className="text-white font-semibold">{title}</div>
+                    <div className="text-white/60 text-sm">{details}</div>
+                  </div>
+
+                  <PrimaryButton
+                    onClick={() => {
+                      setSelectedPositionId(id as number);
+                      setShowWithdrawModal(true);
+                    }}
+                    fullWidth={false}
+                  >
+                    Withdraw
+                  </PrimaryButton>
+                </div>
+              );
+            })}
           </div>
-        </div>
+        ) : (
+          <div className="text-sm text-white/60"></div>
+        )}
       </section>
 
       {/* Projects */}
       <section className="mb-2">
-        <h2 className="text-gray-400 text-sm mb-4">
+        <h2 className="text-gray-400 text-sm mb-4 mt-4">
           Available Lending Projects
         </h2>
 

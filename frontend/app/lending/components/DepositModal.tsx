@@ -63,10 +63,18 @@ export default function DepositModal({
 
     setIsLoading(true);
 
+    // Map user-facing token to backend token identifiers (case-insensitive)
+    const tokenMap: Record<string, string> = {
+      idrx: "mIDRX",
+      eth: "wETH",
+      usdc: "mUSDC",
+    };
+    const mappedToken = tokenMap[token.toLowerCase()] ?? token;
+
     try {
       const res = await onConfirmDeposit({
         protocol: project.protocol,
-        token: token.toLowerCase(),
+        token: mappedToken,
         amount: Number(amount),
       });
 
@@ -122,11 +130,14 @@ export default function DepositModal({
             >
               {((project as any).tokens ??
                 [project.symbol.split("-")[0], "USDC", "IDRX"]
-              ).map((t: string) => (
-                <option key={t} value={t}>
-                  {t.toUpperCase()}
-                </option>
-              ))}
+              ).map((t: string) => {
+                const display = /^[wm]/i.test(t) && t.length > 1 ? t.slice(1) : t;
+                return (
+                  <option key={t} value={t}>
+                    {display.toUpperCase()}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
