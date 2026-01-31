@@ -8,7 +8,7 @@ interface ShowQrProps {
   paymentUrl: string;
   merchantName: string;
   currency: string;
-  onExpireChange: (expired: boolean) => void; // Nama prop disesuaikan dengan Page
+  onExpireChange: (expired: boolean) => void;
   onRefresh: () => void;
 }
 
@@ -20,12 +20,12 @@ const ShowQrCard = ({
   onExpireChange,
   onRefresh,
 }: ShowQrProps) => {
-  const [timeLeft, setTimeLeft] = useState(60); // 1 Menit
+  // 1. Ubah durasi menjadi 120 detik (2 Menit)
+  const [timeLeft, setTimeLeft] = useState(120);
   const isExpired = timeLeft <= 0;
 
   useEffect(() => {
     if (timeLeft <= 0) {
-      // Panggil fungsi pemberitahuan ke parent
       onExpireChange(true);
       return;
     }
@@ -37,16 +37,15 @@ const ShowQrCard = ({
     return () => clearInterval(timer);
   }, [timeLeft, onExpireChange]);
 
+  // 2. Perbarui logic format agar mendukung menit
   const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
     const s = seconds % 60;
-    return `00 : ${s < 10 ? "0" : ""}${s}`;
+    return `${m < 10 ? "0" : ""}${m} : ${s < 10 ? "0" : ""}${s}`;
   };
 
   return (
     <div className="relative w-full max-w-sm mx-auto overflow-hidden rounded-[2.5rem]">
-      {/* Container Utama: 
-        CSS tetap sama, hanya ditambahkan logika blur dinamis 
-      */}
       <div
         className={`
           bg-linear-to-b from-white/10 from-0% to-[#999999]/3 to-100% 
