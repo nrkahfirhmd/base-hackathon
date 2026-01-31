@@ -1,4 +1,5 @@
 from fastapi import APIRouter, status, HTTPException, BackgroundTasks
+from pydantic import BaseModel
 from fastapi import Form, UploadFile, File
 import re
 from config import settings
@@ -189,15 +190,18 @@ def deposit(req: LendingDepositRequest):
         print(f"Error Agent: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Agent gagal mengeksekusi: {str(e)}")
 
-@router.get("/lending/info", response_model=LendingInfoResponse)
-def lending_info():
+from fastapi import Body
+
+class LendingInfoRequest(BaseModel):
+    wallet: str
+
+@router.post("/lending/info", response_model=LendingInfoResponse)
+def lending_info(req: LendingInfoRequest = Body(...)):
     """
-    Auto-detect wallet dari settings, return semua posisi dengan profit calculation.
+    User menginput address wallet, backend return semua posisi dengan profit calculation.
     """
     try:
-        from config import settings
-        wallet = settings.MY_WALLET
-        return lending_get_positions_with_profit(wallet)
+        return lending_get_positions_with_profit(req.wallet)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

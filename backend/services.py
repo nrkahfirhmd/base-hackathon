@@ -107,17 +107,30 @@ def get_lending_recommendation(amount: float, token: str):
     pools = _fetch_live_apy_logic()
     if not pools:
         raise RuntimeError("No pools available from DefiLlama")
-    
-    recommendation = _ai_recommend_protocol(pools, amount)
-    
+
+    # Filter pools by requested token symbol (case-insensitive, allow mIDRX/IDRX and mUSDC/USDC)
+    token_key = token.lower()
+    if token_key in ("midrx", "idrx"):
+        pool_token = "IDRX"
+    elif token_key in ("musdc", "usdc"):
+        pool_token = "USDC"
+    else:
+        pool_token = token.upper()
+
+    filtered_pools = [p for p in pools if p.get("symbol", "").upper() == pool_token]
+    if not filtered_pools:
+        raise RuntimeError(f"No pools available for token {token}")
+
+    recommendation = _ai_recommend_protocol(filtered_pools, amount)
+
     apy = recommendation.get("apy", 0)
     profit_2m = _calculate_profit(amount, apy, 60)
     profit_6m = _calculate_profit(amount, apy, 180)
     profit_1y = _calculate_profit(amount, apy, 365)
-    
+
     return {
         "protocol": recommendation.get("protocol"),
-        "token": "WETH",
+        "token": pool_token,
         "apy": apy,
         "reason": recommendation.get("reason"),
         "is_safe": recommendation.get("is_safe", False),

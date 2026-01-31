@@ -704,7 +704,7 @@ def get_agent_executor():
     if _agent_excutor:
         return _agent_excutor
     
-    tools = [get_defi_yields, recommend_best_protocol, check_wallet_balance, check_user_balance, lending_deposit, lending_withdraw]
+    tools = [get_defi_yields, recommend_best_protocol, check_wallet_balance, check_user_balance, lending_deposit, lending_withdraw_tool]
     
     llm = ChatGoogleGenerativeAI(
         model="gemini-flash-latest",
