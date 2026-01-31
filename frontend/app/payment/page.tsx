@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useAccount } from "wagmi"; // 1. Import useAccount
+import { useAccount } from "wagmi";
 import { useEthersSigner } from "@/app/hooks/useEthers";
 import { CHAIN_ID } from "../constant/smartContract";
 import { useInvoice } from "@/app/hooks/useInvoice";
@@ -14,7 +14,7 @@ export default function PaymentPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const signer = useEthersSigner({ chainId: CHAIN_ID });
-  const { address: payerAddress } = useAccount(); // 2. Ambil alamat Payer (Pengirim)
+  const { address: payerAddress } = useAccount();
   const { getInvoice } = useInvoice();
 
   const invoiceId = searchParams.get("invoiceId");
@@ -25,19 +25,26 @@ export default function PaymentPage() {
   const [merchantAddress, setMerchantAddress] = useState("");
   const [selectedCoin, setSelectedCoin] = useState<"USDC" | "IDRX">("USDC");
 
+  // State baru untuk validasi koin yang diminta blockchain
+  const [requiredCoin, setRequiredCoin] = useState<"USDC" | "IDRX" | null>(
+    null,
+  );
+
   // Efek untuk fetch data jika ini adalah On-Chain Invoice
   useEffect(() => {
     if (invoiceId) {
       getInvoice(invoiceId).then((data) => {
         if (data) {
-          // Ambil nominal asli dari blockchain
           setAmountIdr(data.amountIn.toString());
           setMerchantAddress(data.merchant);
 
-          // OTOMATIS: Set koin sesuai keinginan Merchant di Invoice
-          // Alamat USDC: 0x453f...
+          // Deteksi koin yang diminta merchant di blockchain
+          // Alamat USDC (testnet/mainnet sesuai contract Anda)
           const isUsdc = data.tokenIn.toLowerCase().includes("0x453f");
-          setSelectedCoin(isUsdc ? "USDC" : "IDRX");
+          const merchantReq = isUsdc ? "USDC" : "IDRX";
+
+          setRequiredCoin(merchantReq);
+          setSelectedCoin(merchantReq); // Set awal agar sinkron dengan invoice
         }
       });
     } else {
@@ -46,10 +53,13 @@ export default function PaymentPage() {
     }
   }, [invoiceId, qrAmount, merchantFromUrl, getInvoice]);
 
+  // Logika Mismatch: Jika ada invoiceId tapi koin pilihan user beda dengan blockchain
+  const isMismatch =
+    !!invoiceId && !!requiredCoin && selectedCoin !== requiredCoin;
+
   // Nominal tampil (simulasi konversi sederhana untuk UI)
   const displayAmount = useMemo(() => {
     const val = parseFloat(amountIdr) || 0;
-    // Jika USDC, tampilkan asumsi kurs (IDR 15k), jika IDRX tampilkan nominal asli
     return selectedCoin === "USDC" ? (val / 15000).toFixed(2) : val.toString();
   }, [amountIdr, selectedCoin]);
 
@@ -109,6 +119,16 @@ export default function PaymentPage() {
         </div>
 
         <div className="w-full max-w-md mx-auto">
+          {/* Notifikasi Error jika Currency tidak sesuai */}
+          {isMismatch && (
+            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/50 rounded-xl animate-pulse">
+              <p className="text-red-400 text-center text-[11px] font-bold">
+                ⚠️ Currency Mismatch: Merchant requested {requiredCoin}. Please
+                switch back to {requiredCoin} to pay.
+              </p>
+            </div>
+          )}
+
           <PaymentConfirmationButton
             currency={selectedCoin}
             amount={amountIdr}
@@ -116,8 +136,9 @@ export default function PaymentPage() {
             invoiceId={invoiceId}
             onCurrencyChange={(coin) => setSelectedCoin(coin)}
             signer={signer}
+            // Kirim status disabled ke tombol
+            disabled={isMismatch}
             onSuccess={() =>
-              // 3. Tambahkan parameter &from=${payerAddress} ke URL redirect
               router.push(
                 `/invoice?invoiceId=${invoiceId || ""}&idr=${amountIdr}&coin=${selectedCoin}&to=${merchantAddress}&from=${payerAddress || ""}&status=success`,
               )
