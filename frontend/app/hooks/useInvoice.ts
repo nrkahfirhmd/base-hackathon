@@ -49,10 +49,6 @@ export function useInvoice() {
         const decimals = 6;
         const amountWei = parseUnits(amount, decimals);
 
-        console.log(
-          `[Create] Mengirim ke Blockchain: ${amount} unit (${amountWei.toString()} wei)`,
-        );
-
         const tx = await contract.createInvoice(
           merchant,
           tokenAddress,
@@ -153,10 +149,10 @@ export function useInvoice() {
         );
         const tx = await contract.payInvoice(invoiceId);
         const receipt = await tx.wait();
-        console.log("[Payer] Pembayaran SUKSES di Blockchain!");
+        console.log("[Payer] Pembayaran SUKSES di Blockchain!", receipt.hash);
 
         setIsLoading(false);
-        return { success: true };
+        return { success: true, txHash: receipt.hash };
       } catch (err: any) {
         console.error("[Payer] Error Detail:", err);
         setIsLoading(false);
@@ -180,9 +176,6 @@ export function useInvoice() {
 
           if (Number(data.status) === 1) {
             // 1 = PAID
-            console.log(
-              "[Poll] Status PAID terdeteksi. Mencari siapa pengirimnya...",
-            );
 
             // MENCARI ALAMAT PAYER: Cari event 'InvoicePaid' di blockchain
             const filter = contract.filters.InvoicePaid(invoiceId);
@@ -194,7 +187,9 @@ export function useInvoice() {
                 : "Unknown Payer";
 
             stopped = true;
-            options.onPaid?.({ invoiceId, payer: payerAddress }); // Kirim payer ke UI
+            const lastEvent = events.length > 0 ? events[events.length - 1] as any : null;
+            const txHash = lastEvent ? lastEvent.transactionHash : undefined;
+            options.onPaid?.({ invoiceId, payer: payerAddress, txHash }); // Kirim payer ke UI
             return;
           }
 

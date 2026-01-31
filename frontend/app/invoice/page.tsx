@@ -7,11 +7,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
+import { useAddHistory } from '@/app/hooks/useTransactionHistory';
 
 export default function Invoice() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [showSuccess, setShowSuccess] = useState(true);
+  const { addHistory, isAdding, error } = useAddHistory();
 
   // 1. AMBIL DATA DINAMIS DARI URL
   const invId = searchParams.get("invoiceId") || "N/A";
@@ -19,6 +21,7 @@ export default function Invoice() {
   const currency = searchParams.get("coin") || "USDC";
   const recipient = searchParams.get("to") || "0x000...000";
   const sender = searchParams.get("from") || "Customer Wallet"; // Bisa dikirim dari payer side
+  const txHash = searchParams.get('tx') || searchParams.get('txHash') || '';
 
   // 2. FORMATA ALAMAT AGAR TIDAK TERLALU PANJANG
   const formatAddr = (addr: string) =>
@@ -39,6 +42,23 @@ export default function Invoice() {
     // Gunakan nominal asli yang dilempar dari page sebelumnya
     transferAmount: `${currency} ${parseFloat(amount).toLocaleString("id-ID")}`,
     total: `${currency} ${parseFloat(amount).toLocaleString("id-ID")}`,
+  };
+
+    const handleRecord = async () => {
+    if (!sender) return;
+    const res = await addHistory({
+      sender: sender,
+      receiver: recipient,
+      amount: parseFloat(amount),
+      token: currency,
+      tx_hash: txHash,
+    });
+
+    if (res.success) {
+      console.log('History berhasil disimpan:', res.data);
+    } else {
+      console.error('Gagal menyimpan history:', res.message);
+    }
   };
 
   useEffect(() => {
@@ -116,7 +136,10 @@ export default function Invoice() {
               >
                 Share Invoice
               </SecondaryButton>
-              <PrimaryButton onClick={() => router.push("/")}>
+              <PrimaryButton onClick={() => {
+                router.push("/");
+                handleRecord();
+              }}>
                 Done
               </PrimaryButton>
             </div>

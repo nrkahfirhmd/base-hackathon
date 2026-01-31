@@ -12,7 +12,8 @@ import { JsonRpcSigner } from "ethers";
 import { useInvoice } from "@/app/hooks/useInvoice";
 
 interface PaymentConfirmationButtonProps {
-  onSuccess: () => void;
+  // onSuccess now receives optional txHash from payInvoice
+  onSuccess: (txHash?: string) => void;
   amount: string;
   recipient: string;
   signer: JsonRpcSigner | undefined;
@@ -70,18 +71,18 @@ const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
 
       try {
         if (invoiceId) {
-          const result = await payInvoice(invoiceId);
+            const result = await payInvoice(invoiceId);
 
-          if (result.success) {
+            if (result.success) {
+              setIsComplete(true);
+              onSuccess(result.txHash);
+            } else {
+              throw new Error(result.error);
+            }
+          } else {
             setIsComplete(true);
             onSuccess();
-          } else {
-            throw new Error(result.error);
           }
-        } else {
-          setIsComplete(true);
-          onSuccess();
-        }
       } catch (err: any) {
         console.error("Payment Failed:", err);
         alert("Pembayaran Gagal: " + err.message);
@@ -96,7 +97,7 @@ const PaymentConfirmationButton: React.FC<PaymentConfirmationButtonProps> = ({
 
   return (
     <div
-      className={`relative w-full max-w-md h-[72px] rounded-2xl p-2 flex items-center shadow-2xl border border-white/10 transition-all duration-300 ${className} 
+      className={`relative w-full max-w-md h-18 rounded-2xl p-2 flex items-center shadow-2xl border border-white/10 transition-all duration-300 ${className} 
         ${disabled ? "bg-gray-800 opacity-60 grayscale cursor-not-allowed" : "bg-linear-to-b from-[#281a45] via-[#3b2a6e] to-[#6a3eb7]"} 
         ${isLoading ? "opacity-70 pointer-events-none" : ""}`}
     >

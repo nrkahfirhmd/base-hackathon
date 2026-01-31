@@ -60,15 +60,16 @@ export default function ShowQrPage() {
         },
       });
 
+      
       if (res.success && res.invoiceId) {
         setInvoiceId(res.invoiceId); // Update state dengan ID baru
         setIsExpired(false); // Reset status expired
-
+        
         // Opsional: Update URL browser tanpa reload agar tetap sinkron
         const newUrl = `/show-qr?invoiceId=${res.invoiceId}&amount=${amount}&currency=${currency}`;
         window.history.replaceState(null, "", newUrl);
 
-        console.log("[ShowQrPage] New Invoice Created:", res.invoiceId);
+        console.log("[ShowQrPage] New Invoice Created:", res.txHash);
       }
     } catch (err) {
       console.error("Refresh failed:", err);
@@ -87,7 +88,7 @@ export default function ShowQrPage() {
     const { stop } = watchInvoiceStatus(invoiceId, {
       onPaid: (data: any) => {
         const payerAddress = data?.payer || "Unknown Payer";
-        const targetUrl = `/invoice?invoiceId=${invoiceId}&idr=${amount}&coin=${currency}&to=${address}&from=${payerAddress}&status=success`;
+        const targetUrl = `/invoice?invoiceId=${invoiceId}&idr=${amount}&coin=${currency}&to=${address}&from=${payerAddress}&status=success&txHash=${data?.txHash || ''}`;
         router.push(targetUrl);
       },
       onError: (err: any) => {
