@@ -68,7 +68,7 @@ const ShowQrCard = ({
             level={"H"}
             includeMargin={false}
             imageSettings={{
-              src: "/logo.png",
+              src: "/Logo.png",
               height: 40,
               width: 40,
               excavate: true,
