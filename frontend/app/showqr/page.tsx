@@ -65,7 +65,7 @@ export default function ShowQrPage() {
         setIsExpired(false); // Reset status expired
 
         // Opsional: Update URL browser tanpa reload agar tetap sinkron
-        const newUrl = `/show-qr?invoiceId=${res.invoiceId}&amount=${amount}&currency=${currency}`;
+        const newUrl = `/show-qr?invoiceId=${res.invoiceId}&amount=${amount}&currency=${currency}&txHash=${res.txHash}`;
         window.history.replaceState(null, "", newUrl);
 
         console.log("[ShowQrPage] New Invoice Created:", res.invoiceId);
@@ -87,7 +87,7 @@ export default function ShowQrPage() {
     const { stop } = watchInvoiceStatus(invoiceId, {
       onPaid: (data: any) => {
         const payerAddress = data?.payer || "Unknown Payer";
-        const targetUrl = `/invoice?invoiceId=${invoiceId}&idr=${amount}&coin=${currency}&to=${address}&from=${payerAddress}&status=success`;
+        const targetUrl = `/invoice?invoiceId=${invoiceId}&idr=${amount}&coin=${currency}&to=${address}&from=${payerAddress}&status=success&txHash=${data?.txHash || ''}`;
         router.push(targetUrl);
       },
       onError: (err: any) => {
