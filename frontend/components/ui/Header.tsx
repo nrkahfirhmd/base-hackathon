@@ -1,4 +1,3 @@
-import Image from 'next/image';
 
 type HeaderProps = {
   avatar?: string;
@@ -10,11 +9,11 @@ const Header = ({ avatar, username}: HeaderProps) => (
     <div className="flex items-center gap-3">
       {/* Avatar Placeholder */}
       <div className="w-10 h-10 rounded-full bg-gray-700 overflow-hidden border border-gray-600">
-        <Image src={avatar || "/profile-pic.svg"} alt="Profile Picture" width={40} height={40} />
+        <img src={avatar || '/default-avatar.png'} alt="User Avatar" className="w-full h-full object-cover" />
       </div>
       <div>
         <p className="text-gray-400 text-xs">Good Morning!</p>
-        <h2 className="text-white text-sm font-bold">{username}</h2>
+        <h2 className="text-white text-sm font-bold">{username || "Anonymous"}</h2>
       </div>
     </div>
     <button className="p-2 rounded-full bg-gray-800 hover:bg-gray-700 transition">

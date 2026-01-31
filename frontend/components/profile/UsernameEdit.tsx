@@ -1,8 +1,10 @@
 import Image from "next/image";
+import { useState, useRef, useEffect } from "react";
 
 interface Profile {
   username: string;
   isVerified?: boolean;
+  imageUrl?: string;
 }
 
 interface UsernameEditProps {
@@ -16,6 +18,8 @@ interface UsernameEditProps {
   onSaveUsername: () => void;
   onCancelEdit: () => void;
   onTempUsernameChange: (value: string) => void;
+  onUploadImage?: (file: File) => Promise<void>;
+  uploadMessage?: string | null;
 }
 
 export default function UsernameEdit({
@@ -29,13 +33,81 @@ export default function UsernameEdit({
   onSaveUsername,
   onCancelEdit,
   onTempUsernameChange,
+  onUploadImage,
+  uploadMessage,
 }: UsernameEditProps) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
+
+  const handlePickImage = () => {
+    inputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      alert("Please select an image file");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Image too large (max 5MB)");
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+
+    if (onUploadImage) {
+      await onUploadImage(file);
+    }
+  };
+
   return (
     <div className="flex flex-col items-center w-full">
-      {/* Profile Picture */}
-      <div className="w-24 h-24 rounded-full bg-gray-700 overflow-hidden border-4 border-[#1B1E34] mb-4">
-        <Image src="/profile-pic.svg" alt="Profile" width={96} height={96} />
+      {/* Profile Picture (klik untuk ganti) */}
+      <div
+        className={`relative w-24 h-24 rounded-full bg-gray-700 overflow-hidden border-4 border-[#1B1E34] mb-4 ${isUpdating ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+        role="button"
+        tabIndex={0}
+        aria-label="Klik untuk ganti foto profil"
+        aria-disabled={isUpdating}
+        onClick={(e: React.MouseEvent) => { if (!isUpdating) handlePickImage(); }}
+        onKeyDown={(e: React.KeyboardEvent) => { if (!isUpdating && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); handlePickImage(); } }}
+      >
+        {profile.imageUrl ? (
+          <img src={profile.imageUrl} alt="Profile" className="w-full h-full object-cover" />
+        ) : previewUrl ? (
+          <img src={previewUrl} alt="Profile preview" className="w-full h-full object-cover" />
+        ) : (
+          <Image src="/profile-pic.svg" alt="Profile" width={96} height={96} />
+        )}
+
+        {isUpdating && (
+          <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-full">
+            <svg className="animate-spin h-6 w-6 text-white" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+          </div>
+        )}
+
+        <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
       </div>
+
+      {uploadMessage && (
+        <p className={`text-xs mt-2 ${uploadMessage.toLowerCase().includes('fail') || uploadMessage.toLowerCase().includes('gagal') ? 'text-red-400' : 'text-green-400'}`}>
+          {uploadMessage}
+        </p>
+      )}
 
       {/* Logic Tampilan */}
       {isEditingUsername ? (
@@ -134,7 +206,7 @@ export default function UsernameEdit({
           </h2>
           <button
             onClick={onEditUsername}
-            className="text-gray-400 hover:text-white p-1 transition-colors"
+            className="text-gray-400 cursor-pointer p-1 transition-colors"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"

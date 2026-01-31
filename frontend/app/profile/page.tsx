@@ -21,6 +21,7 @@ export default function ProfilePage() {
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [tempUsername, setTempUsername] = useState("");
   const [verifyMessage, setVerifyMessage] = useState<string | null>(null);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
 
   const isNewUser = profile.username === "Unknown";
 
@@ -141,6 +142,30 @@ export default function ProfilePage() {
               onSaveUsername={handleSaveUsername}
               onCancelEdit={handleCancelEdit}
               onTempUsernameChange={setTempUsername}
+              onUploadImage={async (file: File) => {
+                setUploadMessage(null);
+                const result = await updateProfile({ name: profile.username || 'Unknown', image: file });
+                if (result.success && result.data) {
+                  const d = result.data;
+                  // append timestamp to bust cache so browser reloads new image
+                  const imageUrlWithTs = d.image_url ? `${d.image_url}${d.image_url.includes('?') ? '&' : '?'}t=${Date.now()}` : '';
+                  setProfile({
+                    username: d.name || '',
+                    isVerified: d.is_verified || false,
+                    description: d.description || '',
+                    walletAddress: d.wallet_address || '',
+                    imageUrl: imageUrlWithTs,
+                  });
+                  setUploadMessage('Foto profil berhasil diperbarui');
+                  // clear message after short delay
+                  setTimeout(() => setUploadMessage(null), 3000);
+                } else {
+                  const msg = result.message || 'Failed to upload image';
+                  setError(msg);
+                  setUploadMessage(msg);
+                  setTimeout(() => setUploadMessage(null), 4000);
+                }
+              }}
             />
 
             {/* Wallet Address */}

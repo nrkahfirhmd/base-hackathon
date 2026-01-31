@@ -95,8 +95,8 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#1B1E34] text-white p-6 pb-28">
       <Header
-        avatar="/profile-pic.svg"
-        username={profile?.username || "Anonymous"}
+        avatar={profile?.imageUrl}
+        username={profile?.username}
       />
 
       {/* Balance Card: Sekarang menerima prop isLoss secara dinamis */}
