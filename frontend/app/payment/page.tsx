@@ -38,13 +38,11 @@ export default function PaymentPage() {
           setAmountIdr(data.amountIn.toString());
           setMerchantAddress(data.merchant);
 
-          // Deteksi koin yang diminta merchant di blockchain
-          // Alamat USDC (testnet/mainnet sesuai contract Anda)
           const isUsdc = data.tokenIn.toLowerCase().includes("0x453f");
           const merchantReq = isUsdc ? "USDC" : "IDRX";
 
           setRequiredCoin(merchantReq);
-          setSelectedCoin(merchantReq); // Set awal agar sinkron dengan invoice
+          setSelectedCoin(merchantReq); 
         }
       });
     } else {

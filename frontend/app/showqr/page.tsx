@@ -109,7 +109,11 @@ export default function ShowQrPage() {
   ]);
 
   const paymentUrl = invoiceId
-    ? `${typeof window !== "undefined" ? window.location.origin : ""}/payment?invoiceId=${invoiceId}`
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}/payment?` +
+      `invoiceId=${invoiceId}&` +
+      `amount=${amount}&` +
+      `currency=${currency}&` +
+      `recipient=${address}` // address adalah wallet merchant yang sedang login
     : "";
 
   const handleDownload = useCallback(() => {
