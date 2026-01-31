@@ -202,9 +202,7 @@ def lending_get_positions_with_profit(wallet: str):
     }
     
 def log_transaction(sender: str, receiver: str, amount: float, token: str, tx_hash: str):
-    """
-    Mencatat transaksi Transfer/Payment ke database.
-    """
+
     import datetime
     import random
     try:
@@ -219,7 +217,7 @@ def log_transaction(sender: str, receiver: str, amount: float, token: str, tx_ha
             gas_price = receipt.get('effectiveGasPrice', receipt.get('gasPrice'))
             if gas_price is not None:
                 gas_fee_wei = gas_used * gas_price
-                gas_fee = float(w3_lending.fromWei(gas_fee_wei, 'ether'))
+                gas_fee = float(w3_lending.from_wei(gas_fee_wei, 'ether'))
         except Exception as e:
             print(f"Gagal fetch gas fee dari chain: {e}")
             gas_fee = 0

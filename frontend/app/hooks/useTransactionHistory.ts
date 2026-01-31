@@ -92,7 +92,6 @@ export function useTransactionHistory(): UseTransactionHistoryReturn {
     error,
     refetch: fetchTransactionHistory,
   };
-  
 }
 
 export interface AddHistoryParams {
