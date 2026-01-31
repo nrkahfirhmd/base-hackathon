@@ -10,11 +10,19 @@ from agent import _fetch_live_apy_logic, _ai_recommend_protocol, _calculate_prof
 
 getcontext().prec = 50
 
-PRICE_CACHE = {
-    "last_updated": 0,
-    "data": None,
-    "ttl": 60
+CACHE_TTL = 60
+SYMBOL_MAP = {
+    "ETH": "ethereum",
+    "WETH": "ethereum",  
+    "BTC": "bitcoin",
+    "USDC": "usd-coin",
+    "MUSDC": "usd-coin",  
+    "IDRX": "idrx",
+    "MIDRX": "idrx",     
+    "SOL": "solana",
+    "USDT": "tether"
 }
+TOKEN_DATA_CACHE = {}
 
 def get_usdc_rate() -> float:
     COINGECKO_URL = "https://api.coingecko.com/api/v3/simple/price?ids=usd-coin&vs_currencies=idr"
@@ -248,70 +256,72 @@ def get_main_history(wallet: str):
     
     return response.data
 
-def get_market_rates():
-    """
-    Mengambil harga Realtime (IDRX, USDC, ETH) dari CoinGecko.
-    Return: Dict harga dalam IDR & USD + Change 24h.
-    """
-
-    global PRICE_CACHE
+def get_dynamic_market_rates(symbols: list[str]):
+    global TOKEN_DATA_CACHE
     current_time = time.time()
     
-    if PRICE_CACHE["data"] and (current_time - PRICE_CACHE["last_updated"] < PRICE_CACHE["ttl"]):
-        print("USING CACHE DATA")
-        return PRICE_CACHE["data"]
+    requested_ids = {}
+    ids_to_fetch = set()
     
-    try:
-        url = "https://api.coingecko.com/api/v3/simple/price"
-        params = {
-            "ids": "ethereum,usd-coin,idrx",
-            "vs_currencies": "idr,usd",
-            "include_24hr_change": "true"
-        }
-        
-        response = requests.get(url, params=params, timeout=5)
-        response.raise_for_status()
-        data = response.json()
-        
-        formatted_data = [
-            {
-                "symbol": "ETH",
-                "name": "Ethereum",
-                "price_idr": data["ethereum"]["idr"],
-                "price_usd": data["ethereum"]["usd"],
-                "change_24h": data["ethereum"]["idr_24h_change"],
-                "icon": "https://assets.coingecko.com/coins/images/279/small/ethereum.png"
-            },
-            {
-                "symbol": "USDC",
-                "name": "USD Coin",
-                "price_idr": data["usd-coin"]["idr"],
-                "price_usd": data["usd-coin"]["usd"],
-                "change_24h": data["usd-coin"]["idr_24h_change"],
-                "icon": "https://assets.coingecko.com/coins/images/6319/small/USD_Coin_icon.png"
-            },
-            {
-                "symbol": "IDRX",
-                "name": "IDR X",
-                "price_idr": data["idrx"]["idr"],
-                "price_usd": data["idrx"]["usd"],
-                "change_24h": data["idrx"]["idr_24h_change"],
-                "icon": "https://assets.coingecko.com/coins/images/28362/small/idrx_logo.png"
+    for sym in symbols:
+        clean_sym = sym.upper()
+        if clean_sym in SYMBOL_MAP:
+            cg_id = SYMBOL_MAP[clean_sym]
+            requested_ids[clean_sym] = cg_id
+            
+            cached_item = TOKEN_DATA_CACHE.get(cg_id)
+            if not cached_item or (current_time - cached_item["timestamp"] > CACHE_TTL):
+                ids_to_fetch.add(cg_id)
+    
+    if not requested_ids:
+        return []
+    
+    if ids_to_fetch:
+        try:
+            ids_string = ",".join(list(ids_to_fetch))
+            url = "https://api.coingecko.com/api/v3/simple/price"
+            params = {
+                "ids": ids_string,
+                "vs_currencies": "idr,usd",
+                "include_24hr_change": "true"
             }
-        ]
+
+            resp = requests.get(url, params=params, timeout=5)
+            resp.raise_for_status()
+            api_data = resp.json()
+            
+            for cg_id, data in api_data.items():
+                TOKEN_DATA_CACHE[cg_id] = {
+                    "data": data,
+                    "timestamp": current_time
+                }
+        except Exception as e:
+            print(f"⚠️ API Error (Using Stale Cache if available): {e}")
+    
+    results = []
+    for sym, cg_id in requested_ids.items():
+        cache_entry = TOKEN_DATA_CACHE.get(cg_id)
         
-        PRICE_CACHE["data"] = formatted_data
-        PRICE_CACHE["last_updated"] = current_time
+        if cache_entry:
+            item_data = cache_entry["data"]
+            results.append({
+                "symbol": sym,
+                "name": cg_id.replace("-", " ").title(),
+                "price_idr": item_data.get("idr", 0),
+                "price_usd": item_data.get("usd", 0),
+                "change_24h": item_data.get("idr_24h_change", 0),
+                "icon": f"https://wsrv.nl/?url=https://coinicons-api.vercel.app/api/icon/{sym.lower()}",
+                "last_updated": int(cache_entry["timestamp"]) 
+            })
+        else:
+            results.append({
+                "symbol": sym,
+                "name": sym,
+                "price_idr": 0,
+                "price_usd": 0,
+                "change_24h": 0,
+                "icon": "",
+                "error": "Data unavailable"
+            })
         
-        return formatted_data
-    except Exception as e:
-        print(f"GAGAL FETCH COINGECKO: {e}")
-        
-        return [
-            {"symbol": "ETH", "name": "Ethereum", "price_idr": 42000000,
-                "price_usd": 2700, "change_24h": 2.5, "icon": ""},
-            {"symbol": "USDC", "name": "USD Coin", "price_idr": 15800,
-                "price_usd": 1.0, "change_24h": 0.1, "icon": ""},
-            {"symbol": "IDRX", "name": "IDR X", "price_idr": 1,
-                "price_usd": 0.000063, "change_24h": 0.0, "icon": ""}
-        ]
+    return results
