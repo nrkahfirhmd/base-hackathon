@@ -134,21 +134,22 @@ def lending_project_list():
 @router.post("/lending/deposit", response_model=LendingDepositResponse)
 def deposit(req: LendingDepositRequest):
     agent = get_agent_executor()
-    
+
+    # Pass wallet_address to the agent via prompt and as a tool param
     if req.protocol.lower() == "auto":
         prompt = (
             f"Tugas: Lakukan investasi cerdas.\n"
             f"1. Cek APY terbaru untuk 'moonwell' dan 'aave' menggunakan tool yang tersedia.\n"
             f"2. Bandingkan mana yang lebih tinggi.\n"
             f"3. Panggil tool 'lending_deposit' untuk melakukan deposit sebesar {req.amount} ke protokol pemenang.\n"
-            f"   (Catatan: Gunakan token {req.token} untuk transaksi ini).\n" 
+            f"   (Catatan: Gunakan token {req.token} untuk transaksi ini, dan wallet {req.wallet_address}).\n"
             f"4. Validasi keamanan (safety check) sudah otomatis dilakukan oleh tool."
         )
     else:
         prompt = (
             f"Tugas: Deposit ke {req.protocol}.\n"
             f"1. Panggil tool 'lending_deposit' untuk deposit {req.amount} ke '{req.protocol}'.\n"
-            f"   (Catatan: Gunakan token {req.token} untuk transaksi ini).\n" 
+            f"   (Catatan: Gunakan token {req.token} untuk transaksi ini, dan wallet {req.wallet_address}).\n"
             f"2. Pastikan transaksi berhasil dan berikan hash transaksinya."
         )
 

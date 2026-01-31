@@ -68,6 +68,7 @@ class LendingDepositRequest(BaseModel):
     protocol: str
     token: str = "eth"
     amount: float
+    wallet_address: str
 
 class LendingDepositResponse(BaseModel):
     status: str
