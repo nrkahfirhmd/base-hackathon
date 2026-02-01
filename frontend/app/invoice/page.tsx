@@ -1,98 +1,122 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
-import { ethers } from "ethers"; // Pastikan sudah: npm install ethers
+import { ethers } from "ethers";
 
-// UI Components
 import PrimaryButton from "@/components/ui/buttons/PrimaryButton";
 import SecondaryButton from "@/components/ui/buttons/SecondaryButton";
 import InvoiceCard from "@/components/ui/cards/InvoiceCard";
-
-// Hooks
 import { useAddHistory } from "@/app/hooks/useTransactionHistory";
 
 function InvoiceContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // State Management
-  const [showSuccess, setShowSuccess] = useState(true);
+  // Ref untuk memastikan handleRecord hanya dipanggil SEKALI
+  const hasRecorded = useRef(false);
+
+  const fromHistory = searchParams.get("fromHistory") === "true";
+  const [showSuccess, setShowSuccess] = useState(!fromHistory);
   const [realGasFee, setRealGasFee] = useState<string>("0.00");
   const [isFetchingGas, setIsFetchingGas] = useState(false);
 
   const { addHistory } = useAddHistory();
 
-  // 1. EXTRAK DATA DARI URL
+  // EXTRAK DATA
   const invId = searchParams.get("invoiceId") || "N/A";
-  const amount = searchParams.get("idr") || "0";
+  const amountStr = searchParams.get("idr") || "0";
   const currency = searchParams.get("coin") || "USDC";
-  const recipient = searchParams.get("to") || "0x000...000";
+  const recipient = searchParams.get("to") || "";
   const sender = searchParams.get("from") || "";
   const txHash = searchParams.get("txHash") || searchParams.get("tx") || "";
 
-  // 2. FUNGSI AMBIL GAS FEE LANGSUNG DARI BASE SEPOLIA
+  // 1. FIX RPC: Gunakan Static Network agar tidak gagal deteksi
   const fetchGasFeeOnChain = useCallback(async () => {
-    if (!txHash) return;
+    if (!txHash || txHash === "" || realGasFee !== "0.00") return;
 
     setIsFetchingGas(true);
     try {
-      const provider = new ethers.JsonRpcProvider("https://sepolia.base.org");
+      // Masukkan Chain ID Base Sepolia (84532) agar Ethers tidak perlu deteksi otomatis
+      const provider = new ethers.JsonRpcProvider(
+        "https://sepolia.base.org",
+        84532,
+        { staticNetwork: true },
+      );
+
       const receipt = await provider.getTransactionReceipt(txHash);
-
       if (receipt) {
-        const gasUsed = receipt.gasUsed;
-
-        // Di ethers v6, gunakan receipt.gasPrice
-        // Jika TS masih error, kita cast ke 'any' sebentar untuk mengambil nilainya
-        const gasPrice = receipt.gasPrice;
-
+        const gasPrice =
+          (receipt as any).gasPrice || (receipt as any).effectiveGasPrice;
         if (gasPrice) {
-          // BigInt multiplication
-          const totalFeeWei = gasUsed * gasPrice;
-
-          // Format ke ETH (18 desimal)
-          const totalFeeEth = ethers.formatUnits(totalFeeWei, 18);
-          setRealGasFee(totalFeeEth);
+          const totalFeeWei = receipt.gasUsed * gasPrice;
+          setRealGasFee(ethers.formatUnits(totalFeeWei, 18));
         }
       }
     } catch (err) {
-      console.error("Gagal mengambil gas fee on-chain:", err);
+      console.error("RPC Error:", err);
     } finally {
       setIsFetchingGas(false);
     }
-  }, [txHash]);
+  }, [txHash, realGasFee]);
 
+  // 2. FIX 400 ERROR: Validasi Payload sebelum dikirim
   const handleRecord = useCallback(async () => {
-    if (!sender || !txHash) return;
+    // Jangan kirim jika data tidak lengkap atau sudah pernah direcord
+    if (!sender || !txHash || hasRecorded.current || fromHistory) return;
 
-    await addHistory({
+    const parsedAmount = parseFloat(amountStr);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      console.error("Invalid amount for history:", amountStr);
+      return;
+    }
+
+    hasRecorded.current = true; // Kunci agar tidak double post
+
+    console.log("Sending to Backend:", {
+      sender,
+      recipient,
+      parsedAmount,
+      currency,
+      txHash,
+    });
+
+    const res = await addHistory({
       sender: sender,
       receiver: recipient,
-      amount: parseFloat(amount),
+      amount: parsedAmount,
       token: currency,
       tx_hash: txHash,
     });
-  }, [sender, txHash, recipient, amount, currency, addHistory]);
+
+    if (!res.success) {
+      console.error("Backend Rejected:", res.message);
+      hasRecorded.current = false; // Buka kunci jika gagal agar bisa retry
+    }
+  }, [sender, txHash, recipient, amountStr, currency, addHistory, fromHistory]);
 
   useEffect(() => {
-    // Jalankan kedua proses secara paralel
-    fetchGasFeeOnChain();
+    if (txHash) {
+      fetchGasFeeOnChain();
+    }
+
+    // Pastikan handleRecord dipanggil
     handleRecord();
 
-    const timer = setTimeout(() => {
-      setShowSuccess(false);
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [fetchGasFeeOnChain, handleRecord]);
+    if (!fromHistory) {
+      const timer = setTimeout(() => setShowSuccess(false), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [fetchGasFeeOnChain, handleRecord, fromHistory, txHash]);
 
   const formatAddr = (addr: string) =>
-    addr.length > 15 ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : addr;
+    addr && addr.length > 15
+      ? `${addr.slice(0, 6)}...${addr.slice(-4)}`
+      : addr || "N/A";
 
-  // 5. DATA UNTUK DITAMPILKAN DI CARD
   const invoiceData = {
     invoiceNumber: `#${invId}`,
     date: new Date().toLocaleDateString("id-ID", {
@@ -104,10 +128,9 @@ function InvoiceContent() {
     transferMethod: currency,
     from: formatAddr(sender),
     to: formatAddr(recipient),
-    // Menampilkan Gas Fee asli dengan presisi 8 desimal
     gasFee: `ETH ${parseFloat(realGasFee).toFixed(8)}`,
-    transferAmount: `${currency} ${parseFloat(amount).toLocaleString("id-ID")}`,
-    total: `${currency} ${parseFloat(amount).toLocaleString("id-ID")}`,
+    transferAmount: `${currency} ${parseFloat(amountStr).toLocaleString("id-ID")}`,
+    total: `${currency} ${parseFloat(amountStr).toLocaleString("id-ID")}`,
   };
 
   return (
@@ -119,8 +142,7 @@ function InvoiceContent() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="min-h-screen flex items-center justify-center overflow-hidden"
+            className="min-h-screen flex items-center justify-center"
           >
             <motion.div
               initial={{ scale: 0 }}
@@ -141,7 +163,7 @@ function InvoiceContent() {
             <div className="pb-4">
               <button
                 onClick={() => router.push("/")}
-                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                className="p-2 hover:bg-white/10 rounded-lg"
               >
                 <svg
                   className="w-6 h-6"
@@ -161,12 +183,11 @@ function InvoiceContent() {
 
             <div className="max-w-2xl mx-auto grow w-full">
               <InvoiceCard {...invoiceData} />
-
-              {/* Tanda Loading saat mengambil data dari Chain */}
               {isFetchingGas && (
                 <div className="mt-4 flex flex-col items-center gap-2">
                   <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
                   <p className="text-[10px] text-blue-400 uppercase tracking-widest font-bold animate-pulse">
+                    Verifying Gas Fee...
                   </p>
                 </div>
               )}
@@ -176,9 +197,9 @@ function InvoiceContent() {
               <SecondaryButton
                 onClick={() => {
                   navigator.clipboard.writeText(
-                    `Invoice ${invoiceData.invoiceNumber} - Success`,
+                    `Invoice ${invoiceData.invoiceNumber}`,
                   );
-                  alert("Invoice copied!");
+                  alert("Copied!");
                 }}
               >
                 Share Invoice
@@ -196,7 +217,13 @@ function InvoiceContent() {
 
 export default function Invoice() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#1B1E34] text-white flex items-center justify-center">Loading...</div>}>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#1B1E34] flex items-center justify-center">
+          Loading...
+        </div>
+      }
+    >
       <InvoiceContent />
     </Suspense>
   );
