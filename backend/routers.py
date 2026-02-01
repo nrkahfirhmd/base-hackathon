@@ -1,9 +1,7 @@
 from fastapi import APIRouter, status, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from fastapi import Form, UploadFile, File
-import re
 from config import settings
-import time
 
 from schemas import RateResponse, VerificationRequest
 from schemas import InfoRequest, InfoResponse
@@ -33,7 +31,7 @@ from services import (
 )
 from services import verify_info, get_main_history, log_transaction
 
-from agent import get_agent_executor, lending_withdraw
+from agent import get_agent_executor, lending_withdraw, lending_deposit, _fetch_live_apy_logic
 
 router = APIRouter(prefix="/api", tags=["core"])
 
@@ -134,101 +132,71 @@ def lending_project_list():
 
 @router.post("/lending/deposit", response_model=LendingDepositResponse)
 def deposit(req: LendingDepositRequest):
-    # [TIMER START] Total Transaksi
-    t_start_total = time.perf_counter()
-    
-    try:
-        # --- PHASE 1: Agent Initialization ---
-        t_start_init = time.perf_counter()
-        agent = get_agent_executor()
-        t_end_init = time.perf_counter()
-        
-        # Hitung durasi init
-        duration_init = t_end_init - t_start_init
-        print(f"⏱️ [PERFORMANCE] Init Agent Executor: {duration_init:.4f} detik")
+    if req.protocol.lower() != "auto":
+        print(f"Direct Deposit Execution to {req.protocol}...")
+        try:
+            result = lending_deposit.invoke({
+                "protocol": req.protocol,
+                "amount": req.amount,
+                "token": req.token,
+                "wallet_address": req.wallet_address
+            })
 
-        # Logic Prompting (Sangat cepat, biasanya 0.0000x detik, tidak perlu diukur detail)
-        if req.protocol.lower() == "auto":
-            prompt = (
-                f"Tugas: Lakukan investasi cerdas.\n"
-                f"1. Cek APY terbaru untuk 'moonwell' dan 'aave' menggunakan tool yang tersedia.\n"
-                f"2. Bandingkan mana yang lebih tinggi.\n"
-                f"3. Panggil tool 'lending_deposit' untuk melakukan deposit sebesar {req.amount} ke protokol pemenang.\n"
-                f"   (Catatan: Gunakan token {req.token} untuk transaksi ini, dan wallet {req.wallet_address}).\n"
-                f"4. Validasi keamanan (safety check) sudah otomatis dilakukan oleh tool."
-            )
-        else:
-            prompt = (
-                f"Tugas: Deposit ke {req.protocol}.\n"
-                f"1. Panggil tool 'lending_deposit' untuk deposit {req.amount} ke '{req.protocol}'.\n"
-                f"   (Catatan: Gunakan token {req.token} untuk transaksi ini, dan wallet {req.wallet_address}).\n"
-                f"2. Pastikan transaksi berhasil dan berikan hash transaksinya."
-            )
-
-        print(f"Agent sedang bekerja...")
-
-        # --- PHASE 2: AI Invocation (Thinking + Blockchain Action) ---
-        # Ini biasanya bagian paling lama (bisa 5-30 detik tergantung network/LLM)
-        t_start_invoke = time.perf_counter()
-        
-        result = agent.invoke({"input": prompt})
-        
-        t_end_invoke = time.perf_counter()
-        duration_invoke = t_end_invoke - t_start_invoke
-        print(f"⏱️ [PERFORMANCE] Agent Invoke (LLM + Blockchain): {duration_invoke:.4f} detik")
-
-        agent_reply = result["output"]
-        print(f"Agent selesai: {agent_reply}")
-        
-        # --- PHASE 3: Post-Processing (Parsing Regex) ---
-        t_start_parsing = time.perf_counter()
-
-        hash_match = re.search(r"0x[a-fA-F0-9]{64}", agent_reply)
-        extracted_hash = hash_match.group(0) if hash_match else None
-        
-        final_protocol = req.protocol
-        if req.protocol.lower() == "auto":
-            lower_reply = agent_reply.lower()
-            if "moonwell" in lower_reply:
-                final_protocol = "moonwell"
-            elif "aave" in lower_reply:
-                final_protocol = "aave"
-            else: 
-                final_protocol = "auto"
-        
-        final_explorer_url = ""
-        if extracted_hash:
-            final_explorer_url = f"{settings.EXPLORER_BASE}{extracted_hash}"
-
-        t_end_parsing = time.perf_counter()
-        duration_parsing = t_end_parsing - t_start_parsing
-        print(f"⏱️ [PERFORMANCE] Parsing Regex & Logic: {duration_parsing:.4f} detik")
-
-        # --- FINAL CALCULATION ---
-        t_end_total = time.perf_counter()
-        total_duration = t_end_total - t_start_total
-        print(f"🚀 [PERFORMANCE] TOTAL RUNTIME: {total_duration:.4f} detik")
-        print("-" * 30)
-
-        # (Opsional) Anda bisa mengembalikan durasi ini ke frontend jika perlu
-        return {
-            "status": "success" if extracted_hash else "failed",
-            "protocol": final_protocol,
-            "amount": req.amount,
-            "tx_hash": extracted_hash if extracted_hash else "Not found in agent output",
-            "explorer_url": final_explorer_url,
-            "message": agent_reply,
-            "runtime": {
-                "init_agent": round(duration_init, 4),
-                "invoke": round(duration_invoke, 4),
-                "parsing": round(duration_parsing, 4),
-                "total": round(total_duration, 4)
+            return {
+                "status": "success",
+                "protocol": req.protocol,
+                "amount": req.amount,
+                "tx_hash": result.get("tx_hash", "-"),
+                "explorer_url": result.get("explorer_url", ""),
+                "message": result.get("message", "Deposit executed successfully")
             }
-        }
+            
+        except Exception as e:
+            print(f"Direct Deposit Error: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Deposit Failed: {str(e)}")
+    else:
+        try:
+            yields = _fetch_live_apy_logic()
 
-    except Exception as e:
-        print(f"Error Agent: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Agent gagal mengeksekusi: {str(e)}")
+            supported_protocols = ["moonwell", "aave-v3", "aave"]
+            valid_pools = [p for p in yields if p['protocol'] in supported_protocols]
+
+            if not valid_pools:
+                best_protocol = "moonwell"
+                best_apy = 5.0
+            else:
+                best_pool = max(valid_pools, key=lambda x: x['apy'])
+                best_protocol = best_pool['protocol']
+                if "aave" in best_protocol:
+                    best_protocol = "aave"
+                best_apy = best_pool['apy']
+
+            print(f"{best_protocol} is best ({best_apy}%)")
+
+            deposit_result = lending_deposit.invoke({
+                "protocol": best_protocol,
+                "amount": req.amount,
+                "token": req.token,
+                "wallet_address": req.wallet_address
+            })
+
+            custom_message = (
+                f"AI Optimization Complete!\n"
+                f"Saya memilih {best_protocol.title()} karena memiliki APY tertinggi saat ini ({best_apy}%).\n"
+                f"Dana berhasil didepositkan."
+            )
+
+            return {
+                "status": "success",
+                "protocol": best_protocol,
+                "amount": req.amount,
+                "tx_hash": deposit_result.get("tx_hash", "-"),
+                "explorer_url": deposit_result.get("explorer_url", ""),
+                "message": custom_message
+            }
+        except Exception as e:
+            print(f"Agent Auto-Deposit Error: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Auto-Deposit Failed: {str(e)}")
 
 from fastapi import Body
 
