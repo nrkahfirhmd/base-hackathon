@@ -64,10 +64,18 @@ class LendingRecommendResponse(BaseModel):
     profit_6months: float
     profit_1year: float
 
+# class LendingDepositRequest(BaseModel):
+#     protocol: str
+#     token: str = "eth"
+#     amount: float
+#     wallet_address: str
+
 class LendingDepositRequest(BaseModel):
     protocol: str
     token: str = "eth"
     amount: float
+    wallet_address: str
+    tx_hash: Optional[str] = None
 
 class LendingDepositResponse(BaseModel):
     status: str

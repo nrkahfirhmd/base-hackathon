@@ -1,268 +1,168 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { ProjectItem, DepositResponse } from "@/app/hooks/useLending";
+import { useAccount, useWriteContract, useConfig } from "wagmi";
+import { parseUnits, parseAbi, isAddress } from "viem";
+import { waitForTransactionReceipt } from "@wagmi/core";
 import PrimaryButton from "@/components/ui/buttons/PrimaryButton";
 import SecondaryButton from "@/components/ui/buttons/SecondaryButton";
-import { useAccount } from "wagmi";
-
-interface Props {
-  open: boolean;
-  onClose: () => void;
-  project: ProjectItem | null;
-  onDeposited?: (res: DepositResponse | null) => void;
-  defaultAmount?: number;
-  onConfirmDeposit: (payload: {
-    protocol: string;
-    token: string;
-    amount: number;
-    wallet_address: string;
-  }) => Promise<DepositResponse | null>;
-}
+import {
+  USDC,
+  IDRX,
+  ROUTER,
+  ERC20_ABI,
+  DECIMALS,
+} from "@/app/constant/smartContract";
 
 export default function DepositModal({
   open,
   onClose,
   project,
   onDeposited,
-  defaultAmount = 1,
   onConfirmDeposit,
-}: Props) {
-  const [amount, setAmount] = useState(defaultAmount.toString());
+}: any) {
+  const [amount, setAmount] = useState("1");
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [result, setResult] = useState<DepositResponse | null>(null);
+  const [statusText, setStatusText] = useState("");
+  const [result, setResult] = useState<any>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [copiedTx, setCopiedTx] = useState<string | null>(null);
-  const explorerUrl = process.env.NEXT_PUBLIC_EXPLORER_URL || '';
-  const [token, setToken] = useState<string>("USDC");
+
+  const config = useConfig();
   const { address } = useAccount();
+  const { writeContractAsync } = useWriteContract();
+  const [tokenName, setTokenName] = useState("USDC");
 
   useEffect(() => {
     if (project) {
-      setToken(
-        ((project as any).tokens ?? [project.symbol.split("-")[0]])[0]
-      );
+      const sym = project.symbol || project.token || "USDC";
+      setTokenName(sym.split("-")[0].toUpperCase());
     }
   }, [project]);
 
   if (!open || !project) return null;
 
-  const validateAmount = (v: string) => {
-    const n = Number(v);
-    return !isNaN(n) && n > 0;
-  };
-
   const handleConfirm = async () => {
     setErrorMsg(null);
-
-    if (!acceptTerms) {
-      setErrorMsg("Please accept the terms before continuing.");
-      return;
-    }
-
-    if (!validateAmount(amount)) {
-      setErrorMsg("Amount must be greater than 0.");
-      return;
-    }
+    if (!acceptTerms) return setErrorMsg("Harap setujui risiko.");
+    if (!address) return setErrorMsg("Wallet tidak terhubung.");
 
     setIsLoading(true);
-
-    const tokenMap: Record<string, string> = {
-      idrx: "mIDRX",
-      eth: "wETH",
-      usdc: "mUSDC",
-    };
-    const mappedToken = tokenMap[token.toLowerCase()] ?? token;
-
     try {
+      const tokenAddress = tokenName === "IDRX" ? IDRX : USDC;
+      const spender = isAddress(project.pool_id) ? project.pool_id : ROUTER;
+
+      // 1. APPROVE (On-Chain)
+      setStatusText("Approve Wallet...");
+      const hash = await writeContractAsync({
+        address: tokenAddress as `0x${string}`,
+        abi: parseAbi(ERC20_ABI),
+        functionName: "approve",
+        args: [spender as `0x${string}`, parseUnits(amount, DECIMALS)],
+      });
+
+      // 2. WAIT FOR BLOCKCHAIN (Mencegah backend melihat allowance 0)
+      setStatusText("Confirming...");
+      await waitForTransactionReceipt(config, { hash, confirmations: 1 });
+
+      // 3. MAPPING TOKEN & WALLET_ADDRESS
+      let mappedToken = tokenName.toLowerCase();
+      if (mappedToken === "usdc") mappedToken = "mUSDC";
+      if (mappedToken === "idrx") mappedToken = "mIDRX";
+
+      // 4. HIT API (Via Proxy)
+      setStatusText("Syncing Server...");
       const res = await onConfirmDeposit({
         protocol: project.protocol,
         token: mappedToken,
         amount: Number(amount),
-        wallet_address: address || "",
+        wallet_address: address, // Key sesuai permintaan backend
       });
 
-      setResult(res);
-      onDeposited?.(res);
-
-      if (!res || res.status !== "success") {
-        setErrorMsg(res?.message || "Deposit failed.");
-      } else {
-        setErrorMsg(null);
+      if (res && (res.status === "success" || res.tx_hash)) {
         setResult(res);
-        setIsLoading(false);
+        onDeposited?.(res);
+      } else {
+        throw new Error(res?.message || "Deposit gagal di server.");
       }
     } catch (err: any) {
-      console.error(err);
-      setErrorMsg("Unexpected error occurred.");
+      console.error("Error Detail:", err);
+      setErrorMsg(err.shortMessage || err.message || "Transaksi gagal.");
     } finally {
       setIsLoading(false);
+      setStatusText("");
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
-      {/* Overlay */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
         onClick={onClose}
       />
+      <div className="relative w-full max-w-md rounded-2xl bg-[#0F1222] border border-white/10 p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+        <h3 className="text-xl font-bold text-white mb-1">
+          Konfirmasi Deposit
+        </h3>
+        <p className="text-sm text-white/50 mb-6">{project.protocol}</p>
 
-      {/* Modal */}
-      <div className="relative w-full max-w-md rounded-2xl bg-[#0F1222] border border-white/10 shadow-2xl p-6 animate-in fade-in zoom-in">
-        {/* Header */}
-        <div className="mb-5">
-          <h3 className="text-xl font-bold text-white">Deposit</h3>
-          <p className="text-sm text-white/60 mt-1">
-            {typeof project.protocol === 'string'
-            ? project.protocol.split('-').join(' ')
-            : project.protocol}
-          </p>
-        </div>
-
-        {/* Amount */}
-        <div className="mb-4">
-          <label className="text-sm text-white/70 mb-2 block">Amount</label>
-
-          <div className="flex items-center gap-2">
+        <div className="space-y-4">
+          <div className="bg-white/5 rounded-xl p-4 border border-white/10 flex justify-between items-center">
             <input
+              type="number"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              inputMode="decimal"
-              placeholder="0.00"
-              className="flex-1 rounded-xl bg-white/5 px-4 py-3 text-white outline-none focus:ring-2 focus:ring-purple-500"
+              className="bg-transparent text-xl text-white outline-none w-full"
             />
+            <span className="text-white font-bold ml-2">{tokenName}</span>
+          </div>
 
-            {(() => {
-              let tokens: string[] = [];
-              if (Array.isArray((project as any).tokens) && (project as any).tokens.length > 0) {
-                tokens = (project as any).tokens;
-              } else if (typeof project.symbol === "string") {
-                tokens = project.symbol.split("-");
-              }
-              tokens = Array.from(new Set(tokens.map(t => t.trim()).filter(Boolean)));
+          <label className="flex items-start gap-3 p-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={acceptTerms}
+              onChange={(e) => setAcceptTerms(e.target.checked)}
+              className="mt-1"
+            />
+            <span className="text-xs text-white/60">
+              Setujui izin akses token (Approve).
+            </span>
+          </label>
 
-              if (tokens.length <= 1) {
-                return (
-                  <span className="rounded-xl bg-white/10 px-3 py-3 text-white min-w-15 text-center">
-                    {tokens[0]?.toUpperCase()}
+          {errorMsg && (
+            <div className="p-3 bg-red-500/10 border border-red-500/50 rounded-lg text-red-400 text-[10px] break-all">
+              {errorMsg}
+            </div>
+          )}
+          {result && (
+            <div className="p-3 bg-green-500/10 border border-green-500/50 rounded-lg text-green-400 text-xs text-center">
+              Berhasil! AI sedang memproses.
+            </div>
+          )}
+
+          <div className="flex gap-3 mt-4">
+            <SecondaryButton onClick={onClose} className="flex-1">
+              Batal
+            </SecondaryButton>
+            <PrimaryButton
+              onClick={result ? onClose : handleConfirm}
+              disabled={isLoading}
+              className="flex-1"
+            >
+              {isLoading ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span className="text-[10px] uppercase font-bold">
+                    {statusText}
                   </span>
-                );
-              }
-              return (
-                <select
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  className="rounded-xl bg-white/5 px-3 py-3 text-white outline-none"
-                >
-                  {tokens.map((t: string) => {
-                    const display = /^[wm]/i.test(t) && t.length > 1 ? t.slice(1) : t;
-                    return (
-                      <option key={t} value={t} className="bg-[#252A42] text-white">
-                        {display.toUpperCase()}
-                      </option>
-                    );
-                  })}
-                </select>
-              );
-            })()}
-          </div>
-
-          <p className="text-xs text-white/50 mt-2">
-            Make sure your wallet balance is sufficient.
-          </p>
-        </div>
-
-        {/* Terms */}
-        <label className="flex items-start gap-3 text-sm text-white/80 mb-4">
-          <input
-            type="checkbox"
-            checked={acceptTerms}
-            onChange={(e) => setAcceptTerms(e.target.checked)}
-            className="mt-1"
-          />
-          <span>
-            I understand the risks associated with decentralized lending.
-          </span>
-        </label>
-
-        {/* Error & Result */}
-        {(errorMsg || result) && (
-          <div className="mt-5 space-y-2">
-            {errorMsg && (
-              <div className="rounded-lg bg-red-900/20 border border-red-700 px-3 py-2 text-sm text-red-200">
-                <div className="font-semibold">Deposit failed</div>
-                <div className="text-xs text-red-100/80 mt-1">{errorMsg}</div>
-              </div>
-            )}
-
-            {result && (
-              <div className={`rounded-lg p-3 border ${result.status === 'success' ? 'bg-green-900/20 border-green-700 text-green-100' : result.status === 'pending' ? 'bg-yellow-900/20 border-yellow-700 text-yellow-100' : 'bg-red-900/20 border-red-700 text-red-100'}`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold">Status: <span className="font-normal ml-2">{result.status}</span></div>
-
-                    {result.tx_hash && (
-                      <div className="mt-2 flex items-center gap-2">
-                        <div className="break-all text-xs text-white/60">{result.tx_hash}</div>
-
-                        <button
-                          onClick={async () => {
-                            try {
-                              await navigator.clipboard.writeText(result.tx_hash!);
-                              setCopiedTx(result.tx_hash!);
-                              setTimeout(() => setCopiedTx(null), 2000);
-                            } catch (e) {
-                              console.error('copy failed', e);
-                            }
-                          }}
-                          className="text-xs px-2 py-1 bg-white/5 rounded"
-                        >
-                          {copiedTx === result.tx_hash ? 'Copied' : 'Copy'}
-                        </button>
-
-                        {explorerUrl ? (
-                          <a
-                            href={`${explorerUrl.replace(/\/$/, '')}/tx/${result.tx_hash}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs px-2 py-1 bg-white/5 rounded"
-                          >
-                            View
-                          </a>
-                        ) : null}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="text-xs">
-                    {result.status === 'success' ? (
-                      <div className="inline-block px-2 py-1 rounded-full bg-green-700/40 text-green-100">Success</div>
-                    ) : result.status === 'pending' ? (
-                      <div className="inline-block px-2 py-1 rounded-full bg-yellow-700/40 text-yellow-100">Pending</div>
-                    ) : (
-                      <div className="inline-block px-2 py-1 rounded-full bg-red-700/40 text-red-100">Failed</div>
-                    )}
-                  </div>
                 </div>
-              </div>
-            )}
+              ) : result ? (
+                "Tutup"
+              ) : (
+                "Deposit Sekarang"
+              )}
+            </PrimaryButton>
           </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex gap-3 mt-6">
-          <SecondaryButton onClick={onClose} className="flex-1">
-            Cancel
-          </SecondaryButton>
-          <PrimaryButton
-            onClick={result?.status === 'success' ? onClose : handleConfirm}
-            disabled={isLoading}
-            className="flex-1"
-          >
-            {isLoading ? "Processing..." : result?.status === 'success' ? "Close" : "Confirm"}
-          </PrimaryButton>
         </div>
       </div>
     </div>

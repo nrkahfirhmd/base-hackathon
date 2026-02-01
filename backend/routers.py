@@ -1,6 +1,6 @@
 from fastapi import APIRouter, status, HTTPException, BackgroundTasks
+from pydantic import BaseModel
 from fastapi import Form, UploadFile, File
-import re
 from config import settings
 
 from schemas import RateResponse, VerificationRequest
@@ -31,7 +31,7 @@ from services import (
 )
 from services import verify_info, get_main_history, log_transaction
 
-from agent import get_agent_executor, lending_withdraw
+from agent import get_agent_executor, lending_withdraw, lending_deposit, _fetch_live_apy_logic
 
 router = APIRouter(prefix="/api", tags=["core"])
 
@@ -132,72 +132,84 @@ def lending_project_list():
 
 @router.post("/lending/deposit", response_model=LendingDepositResponse)
 def deposit(req: LendingDepositRequest):
-    agent = get_agent_executor()
-    
-    if req.protocol.lower() == "auto":
-        prompt = (
-            f"Tugas: Lakukan investasi cerdas.\n"
-            f"1. Cek APY terbaru untuk 'moonwell' dan 'aave' menggunakan tool yang tersedia.\n"
-            f"2. Bandingkan mana yang lebih tinggi.\n"
-            f"3. Panggil tool 'lending_deposit' untuk melakukan deposit sebesar {req.amount} ke protokol pemenang.\n"
-            f"   (Catatan: Gunakan token {req.token} untuk transaksi ini).\n" 
-            f"4. Validasi keamanan (safety check) sudah otomatis dilakukan oleh tool."
-        )
+    if req.protocol.lower() != "auto":
+        print(f"Direct Deposit Execution to {req.protocol}...")
+        try:
+            result = lending_deposit.invoke({
+                "protocol": req.protocol,
+                "amount": req.amount,
+                "token": req.token,
+                "wallet_address": req.wallet_address
+            })
+
+            return {
+                "status": "success",
+                "protocol": req.protocol,
+                "amount": req.amount,
+                "tx_hash": result.get("tx_hash", "-"),
+                "explorer_url": result.get("explorer_url", ""),
+                "message": result.get("message", "Deposit executed successfully")
+            }
+            
+        except Exception as e:
+            print(f"Direct Deposit Error: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Deposit Failed: {str(e)}")
     else:
-        prompt = (
-            f"Tugas: Deposit ke {req.protocol}.\n"
-            f"1. Panggil tool 'lending_deposit' untuk deposit {req.amount} ke '{req.protocol}'.\n"
-            f"   (Catatan: Gunakan token {req.token} untuk transaksi ini).\n" 
-            f"2. Pastikan transaksi berhasil dan berikan hash transaksinya."
-        )
+        try:
+            yields = _fetch_live_apy_logic()
 
-    try:
-        print(f"Agent sedang bekerja...")
-        
-        result = agent.invoke({"input": prompt})
-        agent_reply = result["output"]
-        
-        print(f"Agent selesai: {agent_reply}")
-        
-        hash_match = re.search(r"0x[a-fA-F0-9]{64}", agent_reply)
-        extracted_hash = hash_match.group(0) if hash_match else None
-        
-        final_protocol = req.protocol
-        if req.protocol.lower() == "auto":
-            lower_reply = agent_reply.lower()
-            if "moonwell" in lower_reply:
-                final_protocol = "moonwell"
-            elif "aave" in lower_reply:
-                final_protocol = "aave"
-            else: 
-                final_protocol = "auto"
-        
-        final_explorer_url = ""
-        if extracted_hash:
-            final_explorer_url = f"{settings.EXPLORER_BASE}{extracted_hash}"
+            supported_protocols = ["moonwell", "aave-v3", "aave"]
+            valid_pools = [p for p in yields if p['protocol'] in supported_protocols]
 
-        return {
-            "status": "success" if extracted_hash else "failed",
-            "protocol": final_protocol,
-            "amount": req.amount,
-            "tx_hash": extracted_hash if extracted_hash else "Not found in agent output",
-            "explorer_url": final_explorer_url,
-            "message": agent_reply 
-        }
+            if not valid_pools:
+                best_protocol = "moonwell"
+                best_apy = 5.0
+            else:
+                best_pool = max(valid_pools, key=lambda x: x['apy'])
+                best_protocol = best_pool['protocol']
+                if "aave" in best_protocol:
+                    best_protocol = "aave"
+                best_apy = best_pool['apy']
 
-    except Exception as e:
-        print(f"Error Agent: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Agent gagal mengeksekusi: {str(e)}")
+            print(f"{best_protocol} is best ({best_apy}%)")
 
-@router.get("/lending/info", response_model=LendingInfoResponse)
-def lending_info():
+            deposit_result = lending_deposit.invoke({
+                "protocol": best_protocol,
+                "amount": req.amount,
+                "token": req.token,
+                "wallet_address": req.wallet_address
+            })
+
+            custom_message = (
+                f"AI Optimization Complete!\n"
+                f"Saya memilih {best_protocol.title()} karena memiliki APY tertinggi saat ini ({best_apy}%).\n"
+                f"Dana berhasil didepositkan."
+            )
+
+            return {
+                "status": "success",
+                "protocol": best_protocol,
+                "amount": req.amount,
+                "tx_hash": deposit_result.get("tx_hash", "-"),
+                "explorer_url": deposit_result.get("explorer_url", ""),
+                "message": custom_message
+            }
+        except Exception as e:
+            print(f"Agent Auto-Deposit Error: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Auto-Deposit Failed: {str(e)}")
+
+from fastapi import Body
+
+class LendingInfoRequest(BaseModel):
+    wallet: str
+
+@router.post("/lending/info", response_model=LendingInfoResponse)
+def lending_info(req: LendingInfoRequest = Body(...)):
     """
-    Auto-detect wallet dari settings, return semua posisi dengan profit calculation.
+    User menginput address wallet, backend return semua posisi dengan profit calculation.
     """
     try:
-        from config import settings
-        wallet = settings.MY_WALLET
-        return lending_get_positions_with_profit(wallet)
+        return lending_get_positions_with_profit(req.wallet)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

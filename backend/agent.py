@@ -450,7 +450,7 @@ def _wait_for_tx(tx_hash):
         raise e
     
 @tool
-def lending_deposit(protocol: str, amount: float, token: str):
+def lending_deposit(protocol: str, amount: float, token: str, wallet_address: str = None):
     """
     Gunakan tool ini untuk melakukan DEPOSIT atau INVESTASI ke protokol lending.
     
@@ -471,7 +471,7 @@ def lending_deposit(protocol: str, amount: float, token: str):
     if amount_units <= 0:
         raise RuntimeError("Invalid amount")
 
-    sender = Web3.to_checksum_address(settings.MY_WALLET)
+    sender = Web3.to_checksum_address(wallet_address) if wallet_address else Web3.to_checksum_address(settings.MY_WALLET)
     nonce = w3.eth.get_transaction_count(sender)
 
     wrap_hash = None
@@ -704,7 +704,7 @@ def get_agent_executor():
     if _agent_excutor:
         return _agent_excutor
     
-    tools = [get_defi_yields, recommend_best_protocol, check_wallet_balance, check_user_balance, lending_deposit, lending_withdraw]
+    tools = [get_defi_yields, recommend_best_protocol, check_wallet_balance, check_user_balance, lending_deposit, lending_withdraw_tool]
     
     llm = ChatGoogleGenerativeAI(
         model="gemini-flash-latest",
