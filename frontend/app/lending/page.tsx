@@ -38,6 +38,7 @@ export default function LendingPage() {
 
   const [amountInput, setAmountInput] = useState("1");
   const [token, setToken] = useState("eth");
+  const [projectFilter, setProjectFilter] = useState<'all' | 'usdc' | 'eth'>('all');
 
   const [info, setInfo] = useState<InfoResponse | null>(null);
   const { address } = useAccount();
@@ -73,7 +74,7 @@ export default function LendingPage() {
     let totalBefore = 0;
 
     assetsWithBalance.forEach((rawAsset) => {
-      const assetData = toCryptoAsset(rawAsset as any);
+      const assetData = toCryptoAsset(rawAsset);
       const sym = assetData.symbol.toUpperCase();
       const amount = Number(assetData.price) || 0;
 
@@ -191,9 +192,9 @@ export default function LendingPage() {
           </div>
 
           {/* Error / Result */}
-          {lendingError && (
+          {/* {lendingError && (
             <div className="mt-3 text-sm text-red-400">{lendingError}</div>
-          )}
+          )} */}
 
           {rec && (
             <div className="mt-6 rounded-xl bg-white/5 border border-white/10 p-4">
@@ -250,38 +251,31 @@ export default function LendingPage() {
               </div>
 
               {/* Warning */}
-              {rec.amount > 1 && (
+              {/* {rec.amount > 1 && (
                 <div className="mt-4 rounded-lg bg-yellow-900/30 border border-yellow-700 px-3 py-2 text-xs text-yellow-200">
                   Deposit amount exceeds recommended safe limit.
                 </div>
-              )}
+              )} */}
 
               {/* CTA */}
-              <div className="mt-4 flex gap-3">
-                <PrimaryButton
-                  className="flex-1"
-                  onClick={() => {
-                    setSelectedProject({
-                      protocol: rec.protocol as any,
-                      apy: rec.apy,
-                      tvl: rec.tvl || 0,
-                      symbol: rec.token as any,
-                      pool_id: "recommend",
-                    });
-                    setShowDepositModal(true);
-                  }}
-                >
-                  Deposit
-                </PrimaryButton>
-
-                <SecondaryButton
-                  className="flex-1"
-                  onClick={() =>
-                    navigator.clipboard?.writeText(JSON.stringify(rec))
-                  }
-                >
-                  Copy
-                </SecondaryButton>
+              <div className="mt-4">
+                {rec.protocol !== "None Recommended" && (
+                  <PrimaryButton
+                    className="flex-1"
+                    onClick={() => {
+                      setSelectedProject({
+                        protocol: rec.protocol,
+                        apy: rec.apy,
+                        tvl: rec.tvl || 0,
+                        symbol: rec.token,
+                        pool_id: "recommend",
+                      });
+                      setShowDepositModal(true);
+                    }}
+                  >
+                    Deposit
+                  </PrimaryButton>
+                )}
               </div>
             </div>
           )}
@@ -301,18 +295,18 @@ export default function LendingPage() {
               let details = "";
               let id: number = idx;
               try {
-                const parsed = typeof pos === "string" ? JSON.parse(pos) : (pos as any);
+                const parsed = typeof pos === "string" ? JSON.parse(pos) : (pos);
                 if (parsed) {
                   title = `${parsed.token ?? parsed.symbol ?? ""} · ${parsed.protocol ?? ""}`.trim();
                   details = `Principal: ${parsed.principal ?? parsed.amount ?? 0} ${parsed.token ?? parsed.symbol ?? ""} · Profit: ${parsed.profit ?? parsed.current_profit ?? 0}`;
                   id = parsed.id ?? parsed.position_id ?? idx;
                 }
               } catch (e) {
-                // keep fallback strings
+                console.log("Error parsing position:", e);
               }
 
               return (
-                <div key={idx} className="flex items-center justify-between rounded-xl border bg-linear-to-br from-[#2b2b3d] to-[#1a1a24] border border-gray-800 shadow-lg p-4">
+                <div key={idx} className="flex items-center justify-between rounded-xl bg-linear-to-br from-[#2b2b3d] to-[#1a1a24] border border-gray-800 shadow-lg p-4">
                   <div>
                     <div className="text-white font-semibold">{title}</div>
                     <div className="text-white/60 text-sm">{details}</div>
@@ -342,17 +336,50 @@ export default function LendingPage() {
           Available Lending Projects
         </h2>
 
-        <div className="grid gap-1">
-          {projects.map((p) => (
-            <ProjectCard
-              key={p.pool_id}
-              project={p}
-              onDeposit={(proj) => {
-                setSelectedProject(proj);
-                setShowDepositModal(true);
-              }}
-            />
+        {/* Filter */}
+        <div className="flex gap-2 mb-3">
+          {['all', 'usdc', 'eth'].map((f) => (
+            <button
+              key={f}
+              onClick={() => setProjectFilter(f as 'all' | 'usdc' | 'eth')}
+              className={` py-2 px-6
+                rounded-2xl
+                text-white font-medium text-sm
+                disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
+                cursor-pointer ${
+                projectFilter === f
+                  ? 'bg-linear-to-b from-[#4338ca] via-[#5b21b6] to-[#7c3aed]'
+                  : 'bg-white/5 text-white/70 border-white/10 '
+              }`}
+            >
+              {f === 'all' ? 'All' : f.toUpperCase()}
+            </button>
           ))}
+        </div>
+
+        <div className="grid gap-1">
+          {projects
+            .filter((p) => {
+              if (projectFilter === 'all') return true;
+
+              if (typeof p.symbol === 'string') {
+                const syms = p.symbol.toLowerCase().split('-').map((s) => s.trim());
+                if (projectFilter === 'usdc') return syms.includes('usdc');
+                if (projectFilter === 'eth') return syms.includes('eth') || syms.includes('weth');
+              }
+
+              return false;
+            })
+            .map((p) => (
+              <ProjectCard
+                key={p.pool_id}
+                project={p}
+                onDeposit={(proj) => {
+                  setSelectedProject(proj);
+                  setShowDepositModal(true);
+                }}
+              />
+            ))}
         </div>
       </section>
 

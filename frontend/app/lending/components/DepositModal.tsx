@@ -33,6 +33,8 @@ export default function DepositModal({
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<DepositResponse | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [copiedTx, setCopiedTx] = useState<string | null>(null);
+  const explorerUrl = process.env.NEXT_PUBLIC_EXPLORER_URL || '';
   const [token, setToken] = useState<string>("USDC");
   const { address } = useAccount();
 
@@ -66,7 +68,6 @@ export default function DepositModal({
 
     setIsLoading(true);
 
-    // Map user-facing token to backend token identifiers (case-insensitive)
     const tokenMap: Record<string, string> = {
       idrx: "mIDRX",
       eth: "wETH",
@@ -87,6 +88,10 @@ export default function DepositModal({
 
       if (!res || res.status !== "success") {
         setErrorMsg(res?.message || "Deposit failed.");
+      } else {
+        setErrorMsg(null);
+        setResult(res);
+        setIsLoading(false);
       }
     } catch (err: any) {
       console.error(err);
@@ -110,7 +115,9 @@ export default function DepositModal({
         <div className="mb-5">
           <h3 className="text-xl font-bold text-white">Deposit</h3>
           <p className="text-sm text-white/60 mt-1">
-            {project.symbol} · {project.protocol}
+            {typeof project.protocol === 'string'
+            ? project.protocol.split('-').join(' ')
+            : project.protocol}
           </p>
         </div>
 
@@ -127,22 +134,39 @@ export default function DepositModal({
               className="flex-1 rounded-xl bg-white/5 px-4 py-3 text-white outline-none focus:ring-2 focus:ring-purple-500"
             />
 
-            <select
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              className="rounded-xl bg-white/5 px-3 py-3 text-white outline-none"
-            >
-              {((project as any).tokens ??
-                [project.symbol.split("-")[0], "USDC", "IDRX"]
-              ).map((t: string) => {
-                const display = /^[wm]/i.test(t) && t.length > 1 ? t.slice(1) : t;
+            {(() => {
+              let tokens: string[] = [];
+              if (Array.isArray((project as any).tokens) && (project as any).tokens.length > 0) {
+                tokens = (project as any).tokens;
+              } else if (typeof project.symbol === "string") {
+                tokens = project.symbol.split("-");
+              }
+              tokens = Array.from(new Set(tokens.map(t => t.trim()).filter(Boolean)));
+
+              if (tokens.length <= 1) {
                 return (
-                  <option key={t} value={t} className="bg-[#252A42] text-white">
-                    {display.toUpperCase()}
-                  </option>
+                  <span className="rounded-xl bg-white/10 px-3 py-3 text-white min-w-15 text-center">
+                    {tokens[0]?.toUpperCase()}
+                  </span>
                 );
-              })}
-            </select>
+              }
+              return (
+                <select
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  className="rounded-xl bg-white/5 px-3 py-3 text-white outline-none"
+                >
+                  {tokens.map((t: string) => {
+                    const display = /^[wm]/i.test(t) && t.length > 1 ? t.slice(1) : t;
+                    return (
+                      <option key={t} value={t} className="bg-[#252A42] text-white">
+                        {display.toUpperCase()}
+                      </option>
+                    );
+                  })}
+                </select>
+              );
+            })()}
           </div>
 
           <p className="text-xs text-white/50 mt-2">
@@ -163,10 +187,67 @@ export default function DepositModal({
           </span>
         </label>
 
-        {/* Error */}
-        {errorMsg && (
-          <div className="mb-4 rounded-lg bg-red-500/10 border border-red-500/30 px-3 py-2 text-sm text-red-300">
-            {errorMsg}
+        {/* Error & Result */}
+        {(errorMsg || result) && (
+          <div className="mt-5 space-y-2">
+            {errorMsg && (
+              <div className="rounded-lg bg-red-900/20 border border-red-700 px-3 py-2 text-sm text-red-200">
+                <div className="font-semibold">Deposit failed</div>
+                <div className="text-xs text-red-100/80 mt-1">{errorMsg}</div>
+              </div>
+            )}
+
+            {result && (
+              <div className={`rounded-lg p-3 border ${result.status === 'success' ? 'bg-green-900/20 border-green-700 text-green-100' : result.status === 'pending' ? 'bg-yellow-900/20 border-yellow-700 text-yellow-100' : 'bg-red-900/20 border-red-700 text-red-100'}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold">Status: <span className="font-normal ml-2">{result.status}</span></div>
+
+                    {result.tx_hash && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="break-all text-xs text-white/60">{result.tx_hash}</div>
+
+                        <button
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(result.tx_hash!);
+                              setCopiedTx(result.tx_hash!);
+                              setTimeout(() => setCopiedTx(null), 2000);
+                            } catch (e) {
+                              console.error('copy failed', e);
+                            }
+                          }}
+                          className="text-xs px-2 py-1 bg-white/5 rounded"
+                        >
+                          {copiedTx === result.tx_hash ? 'Copied' : 'Copy'}
+                        </button>
+
+                        {explorerUrl ? (
+                          <a
+                            href={`${explorerUrl.replace(/\/$/, '')}/tx/${result.tx_hash}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs px-2 py-1 bg-white/5 rounded"
+                          >
+                            View
+                          </a>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="text-xs">
+                    {result.status === 'success' ? (
+                      <div className="inline-block px-2 py-1 rounded-full bg-green-700/40 text-green-100">Success</div>
+                    ) : result.status === 'pending' ? (
+                      <div className="inline-block px-2 py-1 rounded-full bg-yellow-700/40 text-yellow-100">Pending</div>
+                    ) : (
+                      <div className="inline-block px-2 py-1 rounded-full bg-red-700/40 text-red-100">Failed</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -176,25 +257,13 @@ export default function DepositModal({
             Cancel
           </SecondaryButton>
           <PrimaryButton
-            onClick={handleConfirm}
+            onClick={result?.status === 'success' ? onClose : handleConfirm}
             disabled={isLoading}
             className="flex-1"
           >
-            {isLoading ? "Processing..." : "Confirm"}
+            {isLoading ? "Processing..." : result?.status === 'success' ? "Close" : "Confirm"}
           </PrimaryButton>
         </div>
-
-        {/* Result */}
-        {result && (
-          <div className="mt-5 rounded-lg bg-white/5 p-3 text-sm text-white">
-            <div>Status: {result.status}</div>
-            {result.tx_hash && (
-              <div className="break-all text-xs text-white/60 mt-1">
-                Tx: {result.tx_hash}
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
