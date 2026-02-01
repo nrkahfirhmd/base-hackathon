@@ -31,7 +31,9 @@ from services import (
 )
 from services import verify_info, get_main_history, log_transaction
 
-from agent import get_agent_executor, lending_withdraw, lending_deposit, _fetch_live_apy_logic
+from agent import get_agent_executor
+
+
 
 router = APIRouter(prefix="/api", tags=["core"])
 
@@ -132,71 +134,72 @@ def lending_project_list():
 
 @router.post("/lending/deposit", response_model=LendingDepositResponse)
 def deposit(req: LendingDepositRequest):
-    if req.protocol.lower() != "auto":
-        print(f"Direct Deposit Execution to {req.protocol}...")
-        try:
-            result = lending_deposit.invoke({
-                "protocol": req.protocol,
-                "amount": req.amount,
-                "token": req.token,
-                "wallet_address": req.wallet_address
-            })
-
-            return {
-                "status": "success",
-                "protocol": req.protocol,
-                "amount": req.amount,
-                "tx_hash": result.get("tx_hash", "-"),
-                "explorer_url": result.get("explorer_url", ""),
-                "message": result.get("message", "Deposit executed successfully")
-            }
-            
-        except Exception as e:
-            print(f"Direct Deposit Error: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Deposit Failed: {str(e)}")
-    else:
-        try:
-            yields = _fetch_live_apy_logic()
-
-            supported_protocols = ["moonwell", "aave-v3", "aave"]
-            valid_pools = [p for p in yields if p['protocol'] in supported_protocols]
-
-            if not valid_pools:
-                best_protocol = "moonwell"
-                best_apy = 5.0
-            else:
-                best_pool = max(valid_pools, key=lambda x: x['apy'])
-                best_protocol = best_pool['protocol']
-                if "aave" in best_protocol:
-                    best_protocol = "aave"
-                best_apy = best_pool['apy']
-
-            print(f"{best_protocol} is best ({best_apy}%)")
-
-            deposit_result = lending_deposit.invoke({
-                "protocol": best_protocol,
-                "amount": req.amount,
-                "token": req.token,
-                "wallet_address": req.wallet_address
-            })
-
-            custom_message = (
-                f"AI Optimization Complete!\n"
-                f"Saya memilih {best_protocol.title()} karena memiliki APY tertinggi saat ini ({best_apy}%).\n"
-                f"Dana berhasil didepositkan."
+    """
+    Endpoint untuk merekam data deposit lending.
+    Transaksi deposit sudah dilakukan di client-side, backend hanya menyimpan record.
+    """
+    from datetime import datetime
+    from database import supabase
+    
+    try:
+        # Validasi tx_hash harus ada (transaksi sudah dilakukan di client)
+        if not req.tx_hash:
+            raise HTTPException(
+                status_code=400, 
+                detail="tx_hash is required. Deposit harus dilakukan di client-side terlebih dahulu."
             )
+        
+        # Mapping token name
+        token_symbol = req.token.upper()
+        if token_symbol in ["USDC", "MUSDC"]:
+            token_symbol = "mUSDC"
+        elif token_symbol in ["IDRX", "MIDRX"]:
+            token_symbol = "mIDRX"
+        elif token_symbol in ["ETH", "WETH"]:
+            token_symbol = "WETH"
+        
+        # Determine protocol
+        proto_key = req.protocol.lower() if req.protocol.lower() != "auto" else "moonwell"
+        
+        # Fetch current APY data
+        from agent import _fetch_live_apy_logic
+        pools_data = _fetch_live_apy_logic()
+        pool_info = next((p for p in pools_data if p["protocol"] == proto_key), None)
+        current_apy = pool_info.get("apy", 5.0) if pool_info else 5.0
+        
+        deposited_time = datetime.now().isoformat()
+        
+        # Record position to database
+        insert_resp = supabase.table("user_lending_positions").insert({
+            "wallet_address": req.wallet_address,
+            "protocol": proto_key,
+            "amount": req.amount,
+            "lp_shares": req.amount,
+            "apy": current_apy,
+            "token_symbol": token_symbol,
+            "deposited_at": deposited_time
+        }).execute()
 
-            return {
-                "status": "success",
-                "protocol": best_protocol,
-                "amount": req.amount,
-                "tx_hash": deposit_result.get("tx_hash", "-"),
-                "explorer_url": deposit_result.get("explorer_url", ""),
-                "message": custom_message
-            }
-        except Exception as e:
-            print(f"Agent Auto-Deposit Error: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Auto-Deposit Failed: {str(e)}")
+        if getattr(insert_resp, "error", None):
+            raise RuntimeError(f"Failed to insert position: {insert_resp.error}")
+        
+        explorer_url = f"{settings.EXPLORER_BASE}{req.tx_hash}"
+        
+        return {
+            "status": "success",
+            "protocol": proto_key,
+            "amount": req.amount,
+            "tx_hash": req.tx_hash,
+            "explorer_url": explorer_url,
+            "message": f"Deposit {req.amount} {token_symbol} to {proto_key} recorded successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Deposit Record Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to record deposit: {str(e)}")
+
 
 from fastapi import Body
 
@@ -215,25 +218,97 @@ def lending_info(req: LendingInfoRequest = Body(...)):
 
 @router.post("/lending/withdraw", response_model=LendingWithdrawResponse)
 def lending_withdraw_endpoint(req: LendingWithdrawRequest):
+    """
+    Endpoint untuk merekam data withdraw lending.
+    Transaksi withdraw sudah dilakukan di client-side, backend hanya update record.
+    """
+    from datetime import datetime
+    from database import supabase
+    
     try:
-        data = lending_withdraw(req.id, req.amount, req.token)
+        # Validasi tx_hash harus ada (transaksi sudah dilakukan di client)
+        if not req.tx_hash:
+            raise HTTPException(
+                status_code=400, 
+                detail="tx_hash is required. Withdraw harus dilakukan di client-side terlebih dahulu."
+            )
+        
+        # Get position from database
+        response = supabase.table("user_lending_positions").select(
+            "*").eq("id", req.id).execute()
+        position_data = response.data
+        
+        if not position_data:
+            raise HTTPException(status_code=404, detail=f"No position found with ID {req.id}")
+        
+        position = position_data[0]
+        protocol = position.get("protocol", "")
+        principal_amount = position.get("amount", 0)
+        apy = position.get("apy", 0)
+        deposited_at = position.get("deposited_at", "")
+        token_symbol = position.get("token_symbol", req.token)
+        
+        # Calculate profit
+        def get_days_from_now(deposited_at_str: str) -> int:
+            if not deposited_at_str:
+                return 0
+            try:
+                deposited_time = datetime.fromisoformat(deposited_at_str.replace("Z", "+00:00"))
+                now = datetime.now(deposited_time.tzinfo) if deposited_time.tzinfo else datetime.now()
+                return max(0, (now - deposited_time).days)
+            except:
+                return 0
+        
+        def calculate_profit(amount: float, apy: float, days: int) -> float:
+            if amount <= 0 or apy <= 0 or days <= 0:
+                return 0
+            return amount * (apy / 100) * (days / 365)
+        
+        days_held = get_days_from_now(deposited_at)
+        
+        # Handle full withdraw (amount = -1) or partial
+        withdraw_amount = principal_amount if req.amount < 0 else min(req.amount, principal_amount)
+        remaining_amount = principal_amount - withdraw_amount
+        
+        profit_withdrawn = calculate_profit(withdraw_amount, apy, days_held)
+        profit_pct = (profit_withdrawn / withdraw_amount * 100) if withdraw_amount > 0 else 0
+        
+        # Update or delete position in database
+        if remaining_amount <= 0 or abs(remaining_amount) < 1e-12:
+            # Full withdraw - delete position
+            supabase.table("user_lending_positions").delete().eq("id", req.id).execute()
+            remaining_amount = 0
+        else:
+            # Partial withdraw - update position
+            supabase.table("user_lending_positions").update({
+                "amount": remaining_amount,
+                "lp_shares": remaining_amount
+            }).eq("id", req.id).execute()
+        
+        withdraw_time = datetime.now().isoformat()
+        explorer_url = f"{settings.EXPLORER_BASE}{req.tx_hash}"
+        
         return {
-            "status": "submitted",
-            "protocol": data.get("protocol", ""),
-            "tx_hash": data["tx_hash"],
-            "explorer_url": data["explorer_url"],
-            "withdraw_time": data.get("withdraw_time", ""),
-            "principal": data.get("principal", 0),
-            "current_profit": data.get("profit", 0),
-            "current_profit_pct": data.get("profit_pct", 0),
-            "withdrawn": data.get("withdrawn", 0),
-            "total_received": data.get("profit", 0) + data.get("withdrawn", 0),
-            "remaining_amount": data.get("remaining_amount", 0),
-            "message": data["message"]
+            "status": "success",
+            "protocol": protocol,
+            "tx_hash": req.tx_hash,
+            "explorer_url": explorer_url,
+            "withdraw_time": withdraw_time,
+            "principal": principal_amount,
+            "current_profit": round(profit_withdrawn, 8),
+            "current_profit_pct": round(profit_pct, 2),
+            "withdrawn": withdraw_amount,
+            "total_received": round(withdraw_amount + profit_withdrawn, 6),
+            "remaining_amount": max(0, remaining_amount),
+            "message": f"Withdraw {withdraw_amount} {token_symbol} from {protocol} recorded successfully"
         }
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Error Agent: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Agent gagal mengeksekusi: {str(e)}")
+        print(f"Withdraw Record Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to record withdraw: {str(e)}")
+
     
 @router.post("/history/add", response_model=AddHistoryResponse)
 def add_history(req: AddHistoryRequest):

@@ -31,7 +31,9 @@ export interface DepositPayload {
   token: string;
   amount: number;
   wallet_address: string;
+  tx_hash?: string; // Transaction hash from client-side deposit
 }
+
 
 export interface DepositResponse {
   status: string;
@@ -53,7 +55,10 @@ export interface WithdrawPayload {
   id: number;
   token: string;
   amount: number;
+  tx_hash?: string; // Transaction hash from client-side execution
+  wallet_address?: string; // User wallet address
 }
+
 
 export interface WithdrawResponse {
   status: string;
@@ -64,9 +69,12 @@ export interface WithdrawResponse {
   principal?: number;
   current_profit?: number;
   current_profit_pct?: number;
+  withdrawn?: number;
   total_received?: number;
+  remaining_amount?: number;
   message?: string;
 }
+
 
 export function useLending() {
   const [isLoadingRecommend, setIsLoadingRecommend] = useState(false);
@@ -128,7 +136,7 @@ export function useLending() {
     setIsLoadingDeposit(true);
     setError(null);
     try {
-      const res = await fetch("/api/proxy-deposit", {
+      const res = await fetch(`${API_URL}/api/lending/deposit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

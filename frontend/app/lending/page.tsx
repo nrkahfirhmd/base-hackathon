@@ -33,6 +33,8 @@ export default function LendingPage() {
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [selectedPositionId, setSelectedPositionId] = useState<number | null>(null);
+  const [selectedPositionToken, setSelectedPositionToken] = useState<string>("mUSDC");
+  const [selectedPositionAmount, setSelectedPositionAmount] = useState<number>(0);
 
   const router = useRouter();
 
@@ -315,6 +317,16 @@ export default function LendingPage() {
                   <PrimaryButton
                     onClick={() => {
                       setSelectedPositionId(id as number);
+                      // Extract position data for WithdrawModal
+                      try {
+                        const parsed = typeof pos === "string" ? JSON.parse(pos) : pos;
+                        setSelectedPositionToken(parsed?.token_symbol ?? parsed?.token ?? parsed?.symbol ?? "mUSDC");
+                        setSelectedPositionAmount(parsed?.amount_deposited ?? parsed?.amount ?? parsed?.principal ?? 0);
+                      } catch (e) {
+                        setSelectedPositionToken("mUSDC");
+                        setSelectedPositionAmount(0);
+                      }
+
                       setShowWithdrawModal(true);
                     }}
                     fullWidth={false}
@@ -395,6 +407,8 @@ export default function LendingPage() {
         open={showWithdrawModal}
         onClose={() => setShowWithdrawModal(false)}
         positionId={selectedPositionId || undefined}
+        tokenSymbol={selectedPositionToken}
+        currentAmount={selectedPositionAmount}
         onConfirmWithdraw={withdraw}
       />
     </main>
