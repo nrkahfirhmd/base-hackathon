@@ -2,10 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import { useAccount, useWriteContract, useConfig } from "wagmi";
-import { parseUnits, parseAbi, isAddress } from "viem";
+import { parseUnits, parseAbi } from "viem";
 import { waitForTransactionReceipt } from "@wagmi/core";
-import PrimaryButton from "@/components/ui/buttons/PrimaryButton";
-import SecondaryButton from "@/components/ui/buttons/SecondaryButton";
+import { X } from "lucide-react";
 import {
   USDC,
   IDRX,
@@ -44,7 +43,6 @@ export default function DepositModal({
 
   if (!open || !project) return null;
 
-  // Get the lending pool address based on token
   const getLendingPoolAddress = (token: string): `0x${string}` => {
     const normalizedToken = token.toUpperCase();
     if (normalizedToken === "USDC" || normalizedToken === "MUSDC") {
@@ -53,7 +51,6 @@ export default function DepositModal({
     if (normalizedToken === "IDRX" || normalizedToken === "MIDRX") {
       return LENDING_POOL_MIDRX as `0x${string}`;
     }
-    // Default to USDC pool
     return LENDING_POOL_MUSDC as `0x${string}`;
   };
 
@@ -66,14 +63,15 @@ export default function DepositModal({
     try {
       const tokenAddress = tokenName === "IDRX" ? IDRX : USDC;
       const lendingPoolAddress = getLendingPoolAddress(tokenName);
-      
-      // Validate pool address
-      if (!lendingPoolAddress || lendingPoolAddress === "0x0000000000000000000000000000000000000000") {
-        throw new Error(`Lending pool untuk ${tokenName} belum dikonfigurasi. Silakan hubungi admin.`);
+
+      if (
+        !lendingPoolAddress ||
+        lendingPoolAddress === "0x0000000000000000000000000000000000000000"
+      ) {
+        throw new Error(`Lending pool untuk ${tokenName} belum dikonfigurasi.`);
       }
 
-      // 1. APPROVE (On-Chain) - Approve to Lending Pool
-      setStatusText("Approve Token...");
+      setStatusText("Approve...");
       const approveHash = await writeContractAsync({
         address: tokenAddress as `0x${string}`,
         abi: parseAbi(ERC20_ABI),
@@ -81,11 +79,11 @@ export default function DepositModal({
         args: [lendingPoolAddress, parseUnits(amount, DECIMALS)],
       });
 
-      // 2. WAIT FOR APPROVE CONFIRMATION
-      setStatusText("Confirming Approve...");
-      await waitForTransactionReceipt(config, { hash: approveHash, confirmations: 1 });
+      await waitForTransactionReceipt(config, {
+        hash: approveHash,
+        confirmations: 1,
+      });
 
-      // 3. DEPOSIT TO LENDING POOL (On-Chain via User Wallet)
       setStatusText("Depositing...");
       const depositHash = await writeContractAsync({
         address: lendingPoolAddress,
@@ -94,35 +92,29 @@ export default function DepositModal({
         args: [parseUnits(amount, DECIMALS), address],
       });
 
-      // 4. WAIT FOR DEPOSIT CONFIRMATION
-      setStatusText("Confirming Deposit...");
-      await waitForTransactionReceipt(config, { hash: depositHash, confirmations: 1 });
+      await waitForTransactionReceipt(config, {
+        hash: depositHash,
+        confirmations: 1,
+      });
 
-      // 5. MAPPING TOKEN & CALL BACKEND TO RECORD DATA ONLY
       let mappedToken = tokenName.toLowerCase();
       if (mappedToken === "usdc") mappedToken = "mUSDC";
       if (mappedToken === "idrx") mappedToken = "mIDRX";
 
-      setStatusText("Recording Data...");
+      setStatusText("Recording...");
       const res = await onConfirmDeposit({
         protocol: project.protocol,
         token: mappedToken,
         amount: Number(amount),
         wallet_address: address,
-        tx_hash: depositHash, // Send tx_hash to backend for record only
+        tx_hash: depositHash,
       });
 
       if (res && (res.status === "success" || res.tx_hash)) {
         setResult(res);
         onDeposited?.(res);
       } else {
-        // Even if backend fails, the deposit was successful on-chain
-        console.warn("Backend recording failed, but on-chain deposit succeeded:", depositHash);
-        setResult({
-          status: "success",
-          tx_hash: depositHash,
-          message: "Deposit berhasil! (Data belum tercatat di server)"
-        });
+        setResult({ status: "success", tx_hash: depositHash });
         onDeposited?.({ tx_hash: depositHash, status: "success" });
       }
     } catch (err: any) {
@@ -135,73 +127,94 @@ export default function DepositModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/80 backdrop-blur-md"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-md rounded-2xl bg-[#0F1222] border border-white/10 p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
-        <h3 className="text-xl font-bold text-white mb-1">
-          Konfirmasi Deposit
-        </h3>
-        <p className="text-sm text-white/50 mb-6">{project.protocol}</p>
 
-        <div className="space-y-4">
-          <div className="bg-white/5 rounded-xl p-4 border border-white/10 flex justify-between items-center">
-            <input
-              type="number"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="bg-transparent text-xl text-white outline-none w-full"
-            />
-            <span className="text-white font-bold ml-2">{tokenName}</span>
+      <div className="relative w-full max-w-sm rounded-3xl bg-[#0F1222] border border-white/10 p-8 shadow-2xl overflow-hidden">
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-white/20 hover:text-white transition-colors"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        <h3 className="text-xl font-black text-white mb-6 uppercase tracking-tighter text-center">
+          Confirm Deposit
+        </h3>
+
+        <div className="space-y-6">
+          {/* --- INPUT AMOUNT (TENGAH & NO SPINNERS) --- */}
+          <div className="bg-white/5 rounded-2xl p-6 border border-white/10 flex flex-col items-center justify-center gap-2">
+            <span className="text-white/40 text-[10px] font-bold uppercase tracking-[0.2em]">
+              Enter Amount
+            </span>
+            <div className="flex flex-col items-center w-full">
+              <input
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                // Menambahkan [appearance:textfield] dan selector untuk webkit agar spinner hilang
+                className="bg-transparent text-5xl font-black text-white outline-none w-full text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                placeholder="0"
+                onWheel={(e) => (e.target as HTMLInputElement).blur()} // Mencegah scroll mengganti angka
+              />
+              <span className="text-xs font-bold text-white/40 mt-2 tracking-widest uppercase italic">
+                {tokenName}
+              </span>
+            </div>
           </div>
 
-          <label className="flex items-start gap-3 p-2 cursor-pointer">
+          {/* Terms Checklist */}
+          <label className="flex items-start gap-3 px-2 cursor-pointer group">
             <input
               type="checkbox"
               checked={acceptTerms}
               onChange={(e) => setAcceptTerms(e.target.checked)}
-              className="mt-1"
+              className="mt-1 accent-indigo-500 w-4 h-4"
             />
-            <span className="text-xs text-white/60">
-              Setujui izin akses token dan deposit langsung ke lending pool.
+            <span className="text-[11px] text-white/40 leading-relaxed group-hover:text-white/60 transition-colors text-center px-2">
+              I agree to grant token access and deposit funds into the{" "}
+              {project.protocol} lending pool.
             </span>
           </label>
 
           {errorMsg && (
-            <div className="p-3 bg-red-500/10 border border-red-500/50 rounded-lg text-red-400 text-[10px] break-all">
+            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-[10px] text-center leading-tight">
               {errorMsg}
             </div>
           )}
+
           {result && (
-            <div className="p-3 bg-green-500/10 border border-green-500/50 rounded-lg text-green-400 text-xs text-center">
-              Deposit Berhasil! TX: {result.tx_hash?.slice(0, 10)}...
+            <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 text-xs text-center font-bold uppercase tracking-widest">
+              Success
             </div>
           )}
 
-          <div className="flex gap-3 mt-4">
-            <SecondaryButton onClick={onClose} className="flex-1">
-              Batal
-            </SecondaryButton>
-            <PrimaryButton
+          <div className="flex flex-col gap-3">
+            <button
               onClick={result ? onClose : handleConfirm}
               disabled={isLoading}
-              className="flex-1"
+              className="h-[52px] w-full flex items-center justify-center bg-white/5 border border-white/10 hover:bg-white/10 active:scale-95 transition-all rounded-2xl disabled:opacity-50 shadow-lg"
             >
-              {isLoading ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span className="text-[10px] uppercase font-bold">
-                    {statusText}
-                  </span>
-                </div>
-              ) : result ? (
-                "Tutup"
-              ) : (
-                "Deposit Sekarang"
+              <span className="text-white/40 font-bold tracking-[0.2em] text-xs uppercase">
+                {isLoading ? statusText : result ? "CLOSE" : "CONFIRM DEPOSIT"}
+              </span>
+              {isLoading && (
+                <div className="ml-3 w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
               )}
-            </PrimaryButton>
+            </button>
+
+            {!result && !isLoading && (
+              <button
+                onClick={onClose}
+                className="text-[10px] text-white/20 font-bold uppercase tracking-widest hover:text-white transition-colors py-2"
+              >
+                Cancel
+              </button>
+            )}
           </div>
         </div>
       </div>
