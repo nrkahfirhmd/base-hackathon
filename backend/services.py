@@ -6,7 +6,17 @@ import time
 from fastapi import UploadFile
 from database import supabase
 from config import settings
-from agent import _fetch_live_apy_logic, _ai_recommend_protocol, _calculate_profit, _pool, _erc20, _from_units, _get_days_from_now
+from agent import (
+    _fetch_live_apy_logic, 
+    _ai_recommend_protocol, 
+    _calculate_profit, 
+    _pool, 
+    _erc20, 
+    _from_units, 
+    _get_days_from_now,
+    _get_token_config,
+    _pool_token
+)
 
 getcontext().prec = 50
 
@@ -309,7 +319,7 @@ def get_dynamic_market_rates(symbols: list[str]):
                     "timestamp": current_time
                 }
         except Exception as e:
-            print(f"⚠️ API Error (Using Stale Cache if available): {e}")
+            print(f"API Error (Using Stale Cache if available): {e}")
     
     results = []
     for sym, cg_id in requested_ids.items():
@@ -338,3 +348,50 @@ def get_dynamic_market_rates(symbols: list[str]):
             })
         
     return results
+
+def sync_lending_positions(wallet_address: str):
+    """
+    Menyelaraskan data Database dengan data Real di Blockchain.
+    """
+    wallet = Web3.to_checksum_address(wallet_address)
+    
+    response = supabase.table("user_lending_positions").select("*").eq("wallet_address", wallet).execute()
+    db_positions = response.data
+    
+    synced_data = []
+    
+    for pos in db_positions:
+        protocol = pos.get("protocol", "").lower()
+        token_symbol = pos.get("token_symbol", "IDRX")
+        
+        token_conf = _get_token_config(token_symbol)
+        protocol_info = settings.PROTOCOL_ADDRESSES.get(protocol)
+        
+        target_contract = None
+        
+        if protocol_info:
+            pass 
+        else:
+            pool_contract = _pool_token(token_symbol)
+            
+            real_shares = pool_contract.functions.getUserData(wallet).call()[0] 
+            
+            real_amount_units = pool_contract.functions.previewRedeem(real_shares).call()
+            real_amount = _from_units(real_amount_units, token_conf["decimals"])
+            
+            if real_amount <= 0.000001: 
+                supabase.table("user_lending_positions").delete().eq("id", pos["id"]).execute()
+            else:
+                supabase.table("user_lending_positions").update({
+                    "amount": real_amount,
+                    "lp_shares": _from_units(real_shares, token_conf["decimals"]) 
+                }).eq("id", pos["id"]).execute()
+                
+            synced_data.append({
+                "protocol": protocol,
+                "token": token_symbol,
+                "old_amount": pos["amount"],
+                "new_amount": real_amount
+            })
+            
+    return synced_data
