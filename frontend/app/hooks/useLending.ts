@@ -76,12 +76,19 @@ export interface WithdrawResponse {
 }
 
 
+export interface SyncResponse {
+  status: string;
+  synced_count: number;
+  data: InfoResponse;
+}
+
 export function useLending() {
   const [isLoadingRecommend, setIsLoadingRecommend] = useState(false);
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [isLoadingDeposit, setIsLoadingDeposit] = useState(false);
   const [isLoadingInfo, setIsLoadingInfo] = useState(false);
   const [isLoadingWithdraw, setIsLoadingWithdraw] = useState(false);
+  const [isLoadingSync, setIsLoadingSync] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const recommend = useCallback(
@@ -203,6 +210,30 @@ export function useLending() {
     }
   }, []);
 
+  const syncPositions = useCallback(async (walletAddress: string) => {
+    if (!API_URL) throw new Error("API URL not configured");
+    if (!walletAddress) throw new Error("Wallet address is required");
+
+    setIsLoadingSync(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_URL}/api/lending/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet: walletAddress }),
+      });
+      const data = await res.json();
+      if (!res.ok)
+        throw new Error(data.message || "Gagal sync posisi lending");
+      return data as SyncResponse;
+    } catch (err: any) {
+      setError(err?.message || String(err));
+      return null;
+    } finally {
+      setIsLoadingSync(false);
+    }
+  }, []);
+
   return {
     // Actions
     recommend,
@@ -210,6 +241,7 @@ export function useLending() {
     deposit,
     getInfo,
     withdraw,
+    syncPositions,
 
     // States
     isLoadingRecommend,
@@ -217,6 +249,7 @@ export function useLending() {
     isLoadingDeposit,
     isLoadingInfo,
     isLoadingWithdraw,
+    isLoadingSync,
     error,
   };
 }
