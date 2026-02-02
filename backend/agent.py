@@ -195,13 +195,7 @@ def _check_safety_logic(protocol: str, amount: float, current_apy: float):
     - Untuk testnet, batasi jumlah deposit <= 1 ETH.
     """
     trusted = {"moonwell", "aave-v3", "compound-v3", "spark"}
-
-def lending_withdraw(position_id: int, amount_lp: float, token: str):
-    return lending_withdraw_tool.invoke({
-        "position_id": position_id,
-        "amount_lp": amount_lp,
-        "token": token
-    })
+    
     proto = (protocol or "").lower()
 
     if proto not in trusted:
@@ -216,6 +210,13 @@ def lending_withdraw(position_id: int, amount_lp: float, token: str):
         return {"is_safe": False, "reason": "Jumlah deposit > 1 ETH tidak diizinkan di testnet"}
 
     return {"is_safe": True, "reason": "Lolos pengecekan keamanan"}
+
+def lending_withdraw(position_id: int, amount_lp: float, token: str):
+    return lending_withdraw_tool.invoke({
+        "position_id": position_id,
+        "amount_lp": amount_lp,
+        "token": token
+    })
     
 @tool
 def get_defi_yields():
@@ -632,11 +633,17 @@ def lending_withdraw_tool(position_id: int, amount_lp: float, token: str):
         raise RuntimeError(f"Failed to build withdraw tx: {str(e)}")
 
     tx_hash = _send_tx(tx)
+    
+    print(f"Waiting for withdraw tx: {tx_hash}")
+    _wait_for_tx(tx_hash)
+    
     nonce += 1 
 
     unwrap_hash = None
     if token_conf.get("is_eth"):
         unwrap_hash = _unwrap_weth(withdraw_units, nonce, sender)
+        if unwrap_hash:
+            _wait_for_tx(unwrap_hash)
 
     days_held = _get_days_from_now(position.get("deposited_at", ""))
     profit_withdrawn = _calculate_profit(
@@ -688,14 +695,6 @@ def lending_withdraw_tool(position_id: int, amount_lp: float, token: str):
         "remaining_amount": max(0, remaining_amount),
         "message": f"Withdraw {withdraw_amount_base} {token_conf['symbol']} from {protocol} submitted"
     }
-
-# Wrapper Python murni agar bisa dipanggil backend langsung
-def lending_withdraw(position_id: int, amount_lp: float, token: str):
-    return lending_withdraw_tool.invoke({
-        "position_id": position_id,
-        "amount_lp": amount_lp,
-        "token": token
-    })
 
 _agent_excutor = None
 

@@ -27,7 +27,8 @@ from services import (
     get_lending_recommendation,
     lending_get_positions_with_profit,
     get_lending_projects,
-    get_dynamic_market_rates
+    get_dynamic_market_rates,
+    sync_lending_positions
 )
 from services import verify_info, get_main_history, log_transaction
 
@@ -433,5 +434,23 @@ def get_token_prices(req: TokenRateRequest):
     try:
         data = get_dynamic_market_rates(req.symbols)
         return {"status": "success", "data": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@router.post("/lending/sync")
+def sync_lending_data(req: LendingInfoRequest):
+    """
+    Dipanggil FE setelah withdraw sukses, atau saat refresh halaman.
+    Biar saldo di UI sama persis dengan Blockchain.
+    """
+    try:
+        result = sync_lending_positions(req.wallet)
+        
+        latest_positions = lending_get_positions_with_profit(req.wallet)
+        return {
+            "status": "success", 
+            "synced_count": len(result),
+            "data": latest_positions 
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
