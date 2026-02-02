@@ -12,7 +12,7 @@ app.add_middleware(
 )
 
 app.include_router(router)
-
+# tes
 @app.get("/")
 def sanity_check():
     return {"status": "running", "service": "DeQRypt Backend"}
