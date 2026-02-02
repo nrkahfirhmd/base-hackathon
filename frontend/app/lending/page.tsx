@@ -1,18 +1,28 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useLending, ProjectItem, RecommendResponse, InfoResponse } from "@/app/hooks/useLending";
+import React, { useEffect, useState, useMemo } from "react";
+import {
+  useLending,
+  ProjectItem,
+  RecommendResponse,
+  InfoResponse,
+} from "@/app/hooks/useLending";
 import { useAccount } from "wagmi";
 import BalanceCard from "@/components/ui/cards/BalanceCard";
 import PrimaryButton from "@/components/ui/buttons/PrimaryButton";
-import SecondaryButton from "@/components/ui/buttons/SecondaryButton";
 import ProjectCard from "./components/ProjectCard";
 import DepositModal from "./components/DepositModal";
 import WithdrawModal from "./components/WithdrawModal";
 import { useRouter } from "next/navigation";
-import { useCryptoBalances, toCryptoAsset } from "@/app/hooks/useCryptoBalances";
+import {
+  useCryptoBalances,
+  toCryptoAsset,
+} from "@/app/hooks/useCryptoBalances";
 import { useTokenRates } from "@/app/hooks/useTokenRates";
-import { useMemo } from "react";
+
+// Import Komponen UI Baru
+import RecommendationResult from "./components/RecommendationResult";
+import GetRecommendationCard from "./components/GetRecommendationCard";
 
 export default function LendingPage() {
   const {
@@ -23,12 +33,10 @@ export default function LendingPage() {
     withdraw,
     isLoadingRecommend,
     isLoadingInfo,
-    error: lendingError,
   } = useLending();
 
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [rec, setRec] = useState<RecommendResponse | null>(null);
-
   const [selectedProject, setSelectedProject] = useState<ProjectItem | null>(null);
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
@@ -38,13 +46,15 @@ export default function LendingPage() {
 
   const router = useRouter();
 
+  // State untuk logic pencarian
   const [amountInput, setAmountInput] = useState("1");
   const [token, setToken] = useState("eth");
-  const [projectFilter, setProjectFilter] = useState<'all' | 'usdc' | 'eth'>('all');
+  const [projectFilter, setProjectFilter] = useState<"all" | "usdc" | "eth">("all");
 
   const [info, setInfo] = useState<InfoResponse | null>(null);
   const { address } = useAccount();
 
+  // Fetch data posisi lending user
   useEffect(() => {
     if (!address) {
       setInfo(null);
@@ -56,21 +66,16 @@ export default function LendingPage() {
     })();
   }, [address, getInfo]);
 
-  // Reuse portfolio hooks to populate BalanceCard
-  const { cryptoAssets, assetsWithBalance, isLoading: isBalanceLoading } = useCryptoBalances();
+  const { cryptoAssets, assetsWithBalance } = useCryptoBalances();
 
   const allSymbols = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          [...cryptoAssets, ...assetsWithBalance].map((a) => a.symbol.toUpperCase()),
-        ),
-      ),
-    [cryptoAssets, assetsWithBalance],
+    () => Array.from(new Set([...cryptoAssets, ...assetsWithBalance].map((a) => a.symbol.toUpperCase()))),
+    [cryptoAssets, assetsWithBalance]
   );
 
-  const { rates, prevRates, isLoading: isRatesLoading } = useTokenRates(allSymbols);
+  const { rates, prevRates } = useTokenRates(allSymbols);
 
+  // Kalkulasi statistik portfolio untuk BalanceCard
   const portfolioStats = useMemo(() => {
     let totalNow = 0;
     let totalBefore = 0;
@@ -79,7 +84,6 @@ export default function LendingPage() {
       const assetData = toCryptoAsset(rawAsset);
       const sym = assetData.symbol.toUpperCase();
       const amount = Number(assetData.price) || 0;
-
       const priceNow = sym === "IDRX" ? 1 : rates[sym]?.price_idr || 0;
       const priceBefore = sym === "IDRX" ? 1 : prevRates[sym]?.price_idr || priceNow;
 
@@ -89,17 +93,12 @@ export default function LendingPage() {
 
     const totalProfit = totalNow - totalBefore;
     const growthPercentage = totalBefore > 0 ? (totalProfit / totalBefore) * 100 : 0;
-
-    const formatter = new Intl.NumberFormat("id-ID", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+    const formatter = new Intl.NumberFormat("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     return {
       balance: formatter.format(totalNow),
       profit: (totalProfit >= 0 ? "+ " : "- ") + "IDRX " + formatter.format(Math.abs(totalProfit)),
       growth: growthPercentage.toFixed(2) + "%",
-      rawGrowth: growthPercentage,
       isLoss: totalProfit < 0,
     };
   }, [assetsWithBalance, rates, prevRates]);
@@ -108,15 +107,26 @@ export default function LendingPage() {
     fetchProjects().then((res) => setProjects(res || []));
   }, [fetchProjects]);
 
-  const handleGetRecommendation = async () => {
-    const r = await recommend({ amount: Number(amountInput), token });
+  // Handler pencarian AI
+  const handleGetRecommendation = async (symbolFromCard?: string) => {
+    const selectedToken = symbolFromCard ? symbolFromCard.toLowerCase() : token;
+    if (symbolFromCard) setToken(selectedToken);
+
+    const r = await recommend({
+      amount: Number(amountInput),
+      token: selectedToken,
+    });
     setRec(r);
   };
 
   return (
     <main className="min-h-screen bg-[#1B1E34] text-white p-6 pb-28">
+      {/* Header */}
       <div className="flex items-center justify-between mb-8">
-        <button onClick={() => router.back()} className="p-2">
+        <button
+          onClick={() => router.back()}
+          className="p-2 active:opacity-50 transition-opacity"
+        >
           <svg
             xmlns="http://www.w3.org/2000/svg"
             width="24"
@@ -131,12 +141,12 @@ export default function LendingPage() {
             <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
         </button>
-        <h1 className="text-xl font-bold">Lending</h1>
+        <h1 className="text-xl font-bold uppercase tracking-tight">Lending</h1>
         <div className="w-8"></div>
       </div>
 
-      {/* Top Section */}
-      <section className="grid grid-cols-1 gap-2 mb-6">
+      {/* Top Section: Balance & AI Search */}
+      <section className="flex flex-col gap-6 mb-8">
         <BalanceCard
           balance={"IDRX " + portfolioStats.balance}
           profit={portfolioStats.profit}
@@ -145,191 +155,63 @@ export default function LendingPage() {
           isLoss={portfolioStats.isLoss}
         />
 
-        <h2 className="text-gray-400 text-sm mb-4">Quick recommend</h2>
-
-        <div className="relative w-full p-4 rounded-2xl bg-linear-to-br from-[#2b2b3d] to-[#1a1a24] border border-gray-800 shadow-lg overflow-hidden">
-          <div className="flex gap-3 mb-4">
-            <input
-              value={amountInput}
-              onChange={(e) => setAmountInput(e.target.value)}
-              className="flex-1 rounded-xl bg-white/5 px-4 py-3 text-white outline-none border border-white/10"
-              placeholder="Amount"
+        {/* --- UI BARU DENGAN EFEK SLIDE DARI BALIK CARD --- */}
+        <section className="flex flex-col">
+          {/* Card Input (Lapisan Atas) */}
+          <div className="relative z-20">
+            <GetRecommendationCard
+              onSearch={handleGetRecommendation}
+              isLoading={isLoadingRecommend} // Tambahkan baris ini
             />
-
-            <select
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              /* Tambahkan bg-[#252A42] supaya select utama terlihat jelas */
-              className="w-28 rounded-xl bg-[#252A42] px-3 py-3 text-white outline-none border border-white/10 cursor-pointer"
-            >
-              {/* Paksa background option jadi gelap agar teks putih terbaca */}
-              <option value="eth" className="bg-[#252A42] text-white">
-                ETH
-              </option>
-              <option value="usdc" className="bg-[#252A42] text-white">
-                USDC
-              </option>
-            </select>
           </div>
 
-          <div className="flex gap-3">
-            <SecondaryButton
-              className="flex-1"
-              onClick={() => {
-                setAmountInput("1");
-                setToken("eth");
-                setRec(null);
-              }}
-            >
-              Reset
-            </SecondaryButton>
-
-            <PrimaryButton
-              onClick={handleGetRecommendation}
-              className="flex-1"
-              disabled={!!isLoadingRecommend}
-            >
-              {isLoadingRecommend ? "Loading..." : "Get"}
-            </PrimaryButton>
-          </div>
-
-          {/* Error / Result */}
-          {/* {lendingError && (
-            <div className="mt-3 text-sm text-red-400">{lendingError}</div>
-          )} */}
-
-          {rec && (
-            <div className="mt-6 rounded-xl bg-white/5 border border-white/10 p-4">
-              {/* Header */}
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <div className="text-white font-semibold text-lg">
-                    {rec.protocol} · {rec.token}
-                  </div>
-                  <div className="text-green-400 font-semibold text-sm mt-1">
-                    {rec.apy}% APY
-                  </div>
-                  {/* TVL display (prefer structured tvl, fallback to parsing reason) */}
-                  <div className="text-white/60 text-sm mt-1">
-                    {rec.tvl
-                      ? `TVL: $${Number(rec.tvl).toLocaleString()}`
-                      : (() => {
-                          const match = (rec.reason || "").match(/\$[0-9,]+/);
-                          return match ? `TVL: ${match[0]}` : null;
-                        })()}
-                  </div>
-                </div>
-
-                <span
-                  className={`text-xs px-2 py-1 rounded-full ${
-                    rec.is_safe
-                      ? "bg-green-500/20 text-green-400"
-                      : "bg-yellow-500/20 text-yellow-300"
-                  }`}
-                >
-                  {rec.is_safe ? "Safe" : "Moderate Risk"}
-                </span>
-              </div>
-
-              {/* Reason */}
-              <p className="text-xs text-white/70 leading-relaxed">
-                {rec.reason}
-              </p>
-
-              {/* Profit Projection */}
-              <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                {[
-                  { label: "2 mo", value: rec.profit_2months, digit: 6 },
-                  { label: "6 mo", value: rec.profit_6months, digit: 6 },
-                  { label: "1 yr", value: rec.profit_1year, digit: 4 },
-                ].map((p) => (
-                  <div key={p.label} className="rounded-lg bg-black/20 p-2">
-                    <div className="text-[10px] text-white/50">{p.label}</div>
-                    <div className="text-sm font-semibold mt-1">
-                      {Number(p.value).toFixed(p.digit)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Warning */}
-              {/* {rec.amount > 1 && (
-                <div className="mt-4 rounded-lg bg-yellow-900/30 border border-yellow-700 px-3 py-2 text-xs text-yellow-200">
-                  Deposit amount exceeds recommended safe limit.
-                </div>
-              )} */}
-
-              {/* CTA */}
-              <div className="mt-4">
-                {rec.protocol !== "None Recommended" && (
-                  <PrimaryButton
-                    className="flex-1"
-                    onClick={() => {
-                      setSelectedProject({
-                        protocol: rec.protocol,
-                        apy: rec.apy,
-                        tvl: rec.tvl || 0,
-                        symbol: rec.token,
-                        pool_id: "recommend",
-                      });
-                      setShowDepositModal(true);
-                    }}
-                  >
-                    Deposit
-                  </PrimaryButton>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+          {/* Card Result (Lapisan Bawah / Slide Out) */}
+          <RecommendationResult
+            rec={rec}
+            onDeposit={(proj) => {
+              setSelectedProject(proj);
+              setShowDepositModal(true);
+            }}
+          />
+        </section>
       </section>
 
-      {/* Positions */}
-      <section>
-        <h2 className="text-gray-400 text-sm mb-4">Your Lending Positions</h2>
-
+      {/* Your Positions Section */}
+      <section className="mb-8">
+        <h2 className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-4">
+          Your Lending Positions
+        </h2>
         {isLoadingInfo ? (
-          <div className="text-center text-gray-400 py-4 italic">Loading positions...</div>
-        ) : info && info.positions && info.positions.length > 0 ? (
-          <div className="grid gap-3 mb-4">
+          <div className="text-center text-gray-500 py-4 animate-pulse italic">
+            Syncing positions...
+          </div>
+        ) : info?.positions?.length ? (
+          <div className="grid gap-3">
             {info.positions.map((pos, idx) => {
-              let title = typeof pos === "string" ? pos : JSON.stringify(pos);
-              let details = "";
-              let id: number = idx;
-              try {
-                const parsed = typeof pos === "string" ? JSON.parse(pos) : (pos);
-                if (parsed) {
-                  title = `${parsed.token ?? parsed.symbol ?? ""} · ${parsed.protocol ?? ""}`.trim();
-                  details = `Principal: ${parsed.principal ?? parsed.amount ?? 0} ${parsed.token ?? parsed.symbol ?? ""} · Profit: ${parsed.profit ?? parsed.current_profit ?? 0}`;
-                  id = parsed.id ?? parsed.position_id ?? idx;
-                }
-              } catch (e) {
-                console.log("Error parsing position:", e);
-              }
-
+              const parsed = typeof pos === "string" ? JSON.parse(pos) : pos;
               return (
-                <div key={idx} className="flex items-center justify-between rounded-xl bg-linear-to-br from-[#2b2b3d] to-[#1a1a24] border border-gray-800 shadow-lg p-4">
+                <div
+                  key={idx}
+                  className="flex items-center justify-between rounded-xl bg-gradient-to-br from-[#2b2b3d] to-[#1a1a24] border border-gray-800 p-4 shadow-lg"
+                >
                   <div>
-                    <div className="text-white font-semibold">{title}</div>
-                    <div className="text-white/60 text-sm">{details}</div>
+                    <div className="text-white font-bold">
+                      {parsed.token || parsed.symbol} · {parsed.protocol}
+                    </div>
+                    <div className="text-white/40 text-xs mt-1 italic">
+                      Principal: {parsed.principal || 0} · Profit:{" "}
+                      {parsed.profit || 0}
+                    </div>
                   </div>
-
                   <PrimaryButton
                     onClick={() => {
-                      setSelectedPositionId(id as number);
-                      // Extract position data for WithdrawModal
-                      try {
-                        const parsed = typeof pos === "string" ? JSON.parse(pos) : pos;
-                        setSelectedPositionToken(parsed?.token_symbol ?? parsed?.token ?? parsed?.symbol ?? "mUSDC");
-                        setSelectedPositionAmount(parsed?.amount_deposited ?? parsed?.amount ?? parsed?.principal ?? 0);
-                      } catch (e) {
-                        setSelectedPositionToken("mUSDC");
-                        setSelectedPositionAmount(0);
-                      }
-
+                      setSelectedPositionId(parsed.id || idx);
+                      setSelectedPositionToken(parsed.token || "mUSDC");
+                      setSelectedPositionAmount(parsed.principal || 0);
                       setShowWithdrawModal(true);
                     }}
                     fullWidth={false}
+                    className="h-10 text-xs"
                   >
                     Withdraw
                   </PrimaryButton>
@@ -338,49 +220,40 @@ export default function LendingPage() {
             })}
           </div>
         ) : (
-          <div className="text-sm text-white/60"></div>
+          <div className="text-sm text-white/20 italic">
+            No active positions found
+          </div>
         )}
       </section>
 
-      {/* Projects */}
+      {/* Available Projects Section */}
       <section className="mb-2">
-        <h2 className="text-gray-400 text-sm mb-4 mt-4">
-          Available Lending Projects
+        <h2 className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-4">
+          Market Opportunities
         </h2>
-
-        {/* Filter */}
-        <div className="flex gap-2 mb-3">
-          {['all', 'usdc', 'eth'].map((f) => (
+        <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
+          {["all", "usdc", "eth"].map((f) => (
             <button
               key={f}
-              onClick={() => setProjectFilter(f as 'all' | 'usdc' | 'eth')}
-              className={` py-2 px-6
-                rounded-2xl
-                text-white font-medium text-sm
-                disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
-                cursor-pointer ${
-                projectFilter === f
-                  ? 'bg-linear-to-b from-[#4338ca] via-[#5b21b6] to-[#7c3aed]'
-                  : 'bg-white/5 text-white/70 border-white/10 '
-              }`}
+              onClick={() => setProjectFilter(f as any)}
+              className={`py-2 px-6 rounded-2xl text-xs font-bold transition-all border ${projectFilter === f ? "bg-gradient-to-b from-[#4338ca] to-[#7c3aed] border-transparent shadow-lg shadow-indigo-500/20" : "bg-white/5 text-white/40 border-white/10 hover:border-white/20"}`}
             >
-              {f === 'all' ? 'All' : f.toUpperCase()}
+              {f.toUpperCase()}
             </button>
           ))}
         </div>
 
-        <div className="grid gap-1">
+        <div className="grid gap-2">
           {projects
             .filter((p) => {
-              if (projectFilter === 'all') return true;
-
-              if (typeof p.symbol === 'string') {
-                const syms = p.symbol.toLowerCase().split('-').map((s) => s.trim());
-                if (projectFilter === 'usdc') return syms.includes('usdc');
-                if (projectFilter === 'eth') return syms.includes('eth') || syms.includes('weth');
-              }
-
-              return false;
+              if (projectFilter === "all") return true;
+              const syms = p.symbol
+                .toLowerCase()
+                .split("-")
+                .map((s) => s.trim());
+              return projectFilter === "usdc"
+                ? syms.includes("usdc")
+                : syms.includes("eth") || syms.includes("weth");
             })
             .map((p) => (
               <ProjectCard
@@ -402,7 +275,6 @@ export default function LendingPage() {
         project={selectedProject}
         onConfirmDeposit={deposit}
       />
-
       <WithdrawModal
         open={showWithdrawModal}
         onClose={() => setShowWithdrawModal(false)}
