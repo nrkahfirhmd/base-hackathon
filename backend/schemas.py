@@ -64,11 +64,18 @@ class LendingRecommendResponse(BaseModel):
     profit_6months: float
     profit_1year: float
 
+# class LendingDepositRequest(BaseModel):
+#     protocol: str
+#     token: str = "eth"
+#     amount: float
+#     wallet_address: str
+
 class LendingDepositRequest(BaseModel):
     protocol: str
     token: str = "eth"
     amount: float
     wallet_address: str
+    tx_hash: Optional[str] = None
 
 class LendingDepositResponse(BaseModel):
     status: str
@@ -82,6 +89,9 @@ class LendingWithdrawRequest(BaseModel):
     id: int
     token: str = "eth"
     amount: float = Field(..., description="Amount in LP units; use -1 for all from this position")
+    tx_hash: Optional[str] = None  # Transaction hash from client-side execution
+    wallet_address: Optional[str] = None  # User wallet address
+
 
 class LendingPositionResponse(BaseModel):
     wallet_address: str
@@ -120,8 +130,11 @@ class LendingWithdrawResponse(BaseModel):
     principal: float
     current_profit: float
     current_profit_pct: float
+    withdrawn: float
     total_received: float
+    remaining_amount: float
     message: str
+
 
 class LendingProject(BaseModel):
     protocol: str

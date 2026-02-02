@@ -9,7 +9,7 @@ import '@coinbase/onchainkit/styles.css';
 
 const queryClient = new QueryClient();
 
-const wagmiConfig = createConfig({
+export const config = createConfig({
   chains: [baseSepolia],
   ssr: true,
   transports: {
@@ -19,7 +19,7 @@ const wagmiConfig = createConfig({
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
-    <WagmiProvider config={wagmiConfig}>
+    <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
         <OnchainKitProvider
           apiKey={process.env.NEXT_PUBLIC_ONCHAINKIT_API_KEY}

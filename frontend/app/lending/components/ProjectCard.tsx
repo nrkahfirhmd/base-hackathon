@@ -16,10 +16,14 @@ export default function ProjectCard({ project, onDeposit }: Props) {
       {/* Left Section */}
       <div className="flex flex-col gap-0.5">
         <h3 className="text-white font-semibold text-sm leading-none">
-          {project.symbol}
+          {typeof project.protocol === 'string'
+            ? project.protocol.split('-').join(' ')
+            : project.protocol}
         </h3>
         <span className="text-white/60 text-xs">
-          {project.protocol}
+          {typeof project.symbol === 'string'
+            ? project.symbol.split('-').join(', ')
+            : project.symbol}
         </span>
 
         <span className="mt-1 text-white/40 text-[11px] hidden sm:block">

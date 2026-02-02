@@ -31,7 +31,9 @@ export interface DepositPayload {
   token: string;
   amount: number;
   wallet_address: string;
+  tx_hash?: string; // Transaction hash from client-side deposit
 }
+
 
 export interface DepositResponse {
   status: string;
@@ -53,7 +55,10 @@ export interface WithdrawPayload {
   id: number;
   token: string;
   amount: number;
+  tx_hash?: string; // Transaction hash from client-side execution
+  wallet_address?: string; // User wallet address
 }
+
 
 export interface WithdrawResponse {
   status: string;
@@ -64,9 +69,12 @@ export interface WithdrawResponse {
   principal?: number;
   current_profit?: number;
   current_profit_pct?: number;
+  withdrawn?: number;
   total_received?: number;
+  remaining_amount?: number;
   message?: string;
 }
+
 
 export function useLending() {
   const [isLoadingRecommend, setIsLoadingRecommend] = useState(false);
@@ -89,7 +97,8 @@ export function useLending() {
           body: JSON.stringify({ amount, token }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.message || "Gagal mengambil rekomendasi");
+        if (!res.ok)
+          throw new Error(data.message || "Gagal mengambil rekomendasi");
         return data as RecommendResponse;
       } catch (err: any) {
         setError(err?.message || String(err));
@@ -109,7 +118,8 @@ export function useLending() {
     try {
       const res = await fetch(`${API_URL}/api/lending/project`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Gagal mengambil project lending");
+      if (!res.ok)
+        throw new Error(data.message || "Gagal mengambil project lending");
       return data as ProjectItem[];
     } catch (err: any) {
       setError(err?.message || String(err));
@@ -119,71 +129,34 @@ export function useLending() {
     }
   }, []);
 
-  const deposit = useCallback(
-    async (payload: DepositPayload) => {
-      if (!API_URL) {
-        const msg = "API URL not configured. Set NEXT_PUBLIC_API_URL in .env.local";
-        setError(msg);
-        console.error("useLending.deposit:", msg);
-        return null;
+  // useLending.ts
+  // useLending.ts (Potongan fungsi deposit)
+
+  const deposit = useCallback(async (payload: DepositPayload) => {
+    setIsLoadingDeposit(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_URL}/api/lending/deposit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      // Jika backend mengirimkan Error 524 atau 400 (Unsupported Token)
+      if (!res.ok) {
+        throw new Error(data.detail || data.message || `Error ${res.status}`);
       }
 
-      setIsLoadingDeposit(true);
-      setError(null);
-      try {
-        const res = await fetch(`${API_URL}/api/lending/deposit`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-
-        const contentType = res.headers.get("content-type") || "";
-
-        // If success, try to parse JSON (or fallback to text)
-        if (res.ok) {
-          try {
-            const data = await res.json();
-            return data as DepositResponse;
-          } catch {
-            const text = await res.text();
-            return { status: "success", protocol: payload.protocol, amount: payload.amount, tx_hash: undefined, explorer_url: undefined, message: text } as DepositResponse;
-          }
-        }
-
-        // Non-OK response: parse JSON if available, otherwise read text
-        let errMessage = `HTTP ${res.status}`;
-        try {
-          if (contentType.includes("application/json")) {
-            const data = await res.json();
-            errMessage = data.message || JSON.stringify(data);
-          } else {
-            const text = await res.text();
-            errMessage = text || errMessage;
-          }
-        } catch (parseErr) {
-          console.error("Failed to parse error body:", parseErr);
-        }
-
-        console.error("Deposit failed:", res.status, errMessage);
-        setError(`Deposit failed: ${errMessage}`);
-
-        return {
-          status: "failed",
-          protocol: payload.protocol,
-          amount: payload.amount,
-          message: errMessage,
-        } as DepositResponse;
-      } catch (err: any) {
-        console.error("Deposit failed (network):", err);
-        setError(err?.message || String(err));
-        return null;
-      } finally {
-        setIsLoadingDeposit(false);
-      }
-    },
-    [],
-  );
-
+      return data as DepositResponse;
+    } catch (err: any) {
+      setError(err.message);
+      return null;
+    } finally {
+      setIsLoadingDeposit(false);
+    }
+  }, []);
   const getInfo = useCallback(async (address: string) => {
     if (!API_URL) throw new Error("API URL not configured");
     if (!address) throw new Error("Address is required");
@@ -197,7 +170,8 @@ export function useLending() {
         body: JSON.stringify({ wallet: address }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Gagal mengambil info lending");
+      if (!res.ok)
+        throw new Error(data.message || "Gagal mengambil info lending");
       return data as InfoResponse;
     } catch (err: any) {
       setError(err?.message || String(err));
