@@ -31,9 +31,7 @@ from services import (
 )
 from services import verify_info, get_main_history, log_transaction
 
-from agent import get_agent_executor
-
-
+from agent import get_agent_executor, lending_withdraw, lending_deposit, _fetch_live_apy_logic
 
 router = APIRouter(prefix="/api", tags=["core"])
 
@@ -135,71 +133,119 @@ def lending_project_list():
 @router.post("/lending/deposit", response_model=LendingDepositResponse)
 def deposit(req: LendingDepositRequest):
     """
-    Endpoint untuk merekam data deposit lending.
-    Transaksi deposit sudah dilakukan di client-side, backend hanya menyimpan record.
+    Endpoint Hybrid:
+    1. Jika req.tx_hash ADA -> Mode RECORD (Hanya simpan data transaksi dari Frontend ke DB).
+    2. Jika req.tx_hash KOSONG -> Mode EXECUTE (Backend yang melakukan transaksi on-chain).
     """
-    from datetime import datetime
-    from database import supabase
-    
-    try:
-        # Validasi tx_hash harus ada (transaksi sudah dilakukan di client)
-        if not req.tx_hash:
-            raise HTTPException(
-                status_code=400, 
-                detail="tx_hash is required. Deposit harus dilakukan di client-side terlebih dahulu."
-            )
+    if req.tx_hash:
+        print(f"Recording Client-Side Deposit: {req.tx_hash}")
+        from datetime import datetime
         
-        # Mapping token name
-        token_symbol = req.token.upper()
-        if token_symbol in ["USDC", "MUSDC"]:
-            token_symbol = "mUSDC"
-        elif token_symbol in ["IDRX", "MIDRX"]:
-            token_symbol = "mIDRX"
-        elif token_symbol in ["ETH", "WETH"]:
-            token_symbol = "WETH"
-        
-        # Determine protocol
-        proto_key = req.protocol.lower() if req.protocol.lower() != "auto" else "moonwell"
-        
-        # Fetch current APY data
-        from agent import _fetch_live_apy_logic
-        pools_data = _fetch_live_apy_logic()
-        pool_info = next((p for p in pools_data if p["protocol"] == proto_key), None)
-        current_apy = pool_info.get("apy", 5.0) if pool_info else 5.0
-        
-        deposited_time = datetime.now().isoformat()
-        
-        # Record position to database
-        insert_resp = supabase.table("user_lending_positions").insert({
-            "wallet_address": req.wallet_address,
-            "protocol": proto_key,
-            "amount": req.amount,
-            "lp_shares": req.amount,
-            "apy": current_apy,
-            "token_symbol": token_symbol,
-            "deposited_at": deposited_time
-        }).execute()
+        try:
+            token_symbol = req.token.upper()
+            if token_symbol in ["USDC", "MUSDC"]: token_symbol = "mUSDC"
+            elif token_symbol in ["IDRX", "MIDRX"]: token_symbol = "mIDRX"
+            elif token_symbol in ["ETH", "WETH"]: token_symbol = "WETH"
+            
+            proto_key = req.protocol.lower() if req.protocol.lower() != "auto" else "moonwell"
+            
+            yields = _fetch_live_apy_logic()
+            pool_info = next((p for p in yields if p["protocol"] == proto_key), None)
+            current_apy = pool_info.get("apy", 5.0) if pool_info else 5.0
+            
+            deposited_time = datetime.now().isoformat()
+            
+            insert_resp = supabase.table("user_lending_positions").insert({
+                "wallet_address": req.wallet_address,
+                "protocol": proto_key,
+                "amount": req.amount,
+                "lp_shares": req.amount,
+                "apy": current_apy,
+                "token_symbol": token_symbol,
+                "deposited_at": deposited_time
+            }).execute()
 
-        if getattr(insert_resp, "error", None):
-            raise RuntimeError(f"Failed to insert position: {insert_resp.error}")
-        
-        explorer_url = f"{settings.EXPLORER_BASE}{req.tx_hash}"
-        
-        return {
-            "status": "success",
-            "protocol": proto_key,
-            "amount": req.amount,
-            "tx_hash": req.tx_hash,
-            "explorer_url": explorer_url,
-            "message": f"Deposit {req.amount} {token_symbol} to {proto_key} recorded successfully"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Deposit Record Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to record deposit: {str(e)}")
+            if getattr(insert_resp, "error", None):
+                raise RuntimeError(f"Failed to insert position: {insert_resp.error}")
+            
+            explorer_url = f"{settings.EXPLORER_BASE}{req.tx_hash}"
+            
+            return {
+                "status": "success",
+                "protocol": proto_key,
+                "amount": req.amount,
+                "tx_hash": req.tx_hash,
+                "explorer_url": explorer_url,
+                "message": f"Deposit recorded successfully"
+            }
+            
+        except Exception as e:
+            print(f"❌ Record Error: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to record deposit: {str(e)}")
+    else:
+        if req.protocol.lower() != "auto":
+            print(f"Direct Backend Execution to {req.protocol}...")
+            try:
+                result = lending_deposit.invoke({
+                    "protocol": req.protocol,
+                    "amount": req.amount,
+                    "token": req.token,
+                    "wallet_address": req.wallet_address
+                })
 
+                return {
+                    "status": "success",
+                    "protocol": req.protocol,
+                    "amount": req.amount,
+                    "tx_hash": result.get("tx_hash", "-"),
+                    "explorer_url": result.get("explorer_url", ""),
+                    "message": result.get("message", "Deposit executed successfully")
+                }
+            except Exception as e:
+                print(f"Direct Deposit Error: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"Deposit Failed: {str(e)}")
+        else:
+            print(f"Auto-Deposit (Backend Logic) Started...")
+            try:
+                yields = _fetch_live_apy_logic()
+                supported_protocols = ["moonwell", "aave-v3", "aave"]
+                valid_pools = [p for p in yields if p['protocol'] in supported_protocols]
+
+                if not valid_pools:
+                    best_protocol = "moonwell"
+                    best_apy = 5.0
+                else:
+                    best_pool = max(valid_pools, key=lambda x: x['apy'])
+                    best_protocol = best_pool['protocol']
+                    if "aave" in best_protocol: best_protocol = "aave"
+                    best_apy = best_pool['apy']
+
+                print(f"Auto Selected: {best_protocol} ({best_apy}%)")
+
+                deposit_result = lending_deposit.invoke({
+                    "protocol": best_protocol,
+                    "amount": req.amount,
+                    "token": req.token,
+                    "wallet_address": req.wallet_address
+                })
+
+                custom_message = (
+                    f"AI Optimization Complete!\n"
+                    f"Saya memilih {best_protocol.title()} karena APY tertinggi ({best_apy}%).\n"
+                    f"Dana berhasil didepositkan."
+                )
+
+                return {
+                    "status": "success",
+                    "protocol": best_protocol,
+                    "amount": req.amount,
+                    "tx_hash": deposit_result.get("tx_hash", "-"),
+                    "explorer_url": deposit_result.get("explorer_url", ""),
+                    "message": custom_message
+                }
+            except Exception as e:
+                print(f"Auto-Deposit Error: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"Auto-Deposit Failed: {str(e)}")
 
 from fastapi import Body
 
