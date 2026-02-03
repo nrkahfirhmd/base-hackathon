@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAccount, useWriteContract } from "wagmi";
 import { parseUnits, parseAbi } from "viem";
 import { waitForTransactionReceipt } from "@wagmi/core";
@@ -46,6 +46,15 @@ export default function WithdrawModal({
   const [result, setResult] = useState<WithdrawResponse | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [statusText, setStatusText] = useState("");
+  
+  useEffect(() => {
+    if (open) {
+      setResult(null);
+      setAmount("");
+      setErrorMsg(null);
+      setStatusText("");
+    }
+  }, [open]);
 
   if (!open || !positionId) return null;
 
@@ -84,21 +93,29 @@ export default function WithdrawModal({
       return;
     }
 
+    const lendingPoolAddress = getLendingPoolAddress();
+    if (!lendingPoolAddress) {
+      setErrorMsg("Lending pool address not found.");
+      return;
+    }
+
     const withdrawAmount = Number(amount);
-    const EPS = 1e-9;
-    const amountForApi =
-      withdrawAmount >= currentAmount - EPS ? -1 : withdrawAmount;
     if (withdrawAmount > currentAmount) {
       setErrorMsg(`Amount exceeds your balance (${currentAmount})`);
       return;
     }
+
+    // Use -1 to indicate full withdraw to backend
+    const EPS = 1e-9;
+    const amountForApi =
+      withdrawAmount >= currentAmount - EPS ? -1 : withdrawAmount;
 
     setIsLoading(true);
 
     try {
       const lendingPoolAddress = getLendingPoolAddress();
 
-      // 1. WITHDRAW FROM LENDING POOL
+      // 1. WITHDRAW ON-CHAIN
       setStatusText("Withdrawing...");
       const withdrawHash = await writeContractAsync({
         address: lendingPoolAddress,
@@ -113,12 +130,12 @@ export default function WithdrawModal({
         confirmations: 1,
       });
 
-      // 3. UPDATE BACKEND
+      // 3. UPDATE BACKEND (send -1 if full)
       setStatusText("Updating Records...");
       const res = await onConfirmWithdraw({
         id: positionId,
         token: tokenSymbol,
-        amount: withdrawAmount,
+        amount: amountForApi, // <-- -1 for full withdraw
         tx_hash: withdrawHash,
         wallet_address: address,
       });
