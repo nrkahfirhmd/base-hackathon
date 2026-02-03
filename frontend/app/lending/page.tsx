@@ -6,12 +6,11 @@ import {
   ProjectItem,
   RecommendResponse,
   InfoResponse,
-  WithdrawPayload, // <-- tambahkan ini
+  WithdrawPayload,
 } from "@/app/hooks/useLending";
-import PortfolioCard from "./components/PortofolioCard";
+import PortfolioCard from "./components/PortofolioCard"; // Fixed typo in import name if necessary
 import { useAccount } from "wagmi";
 import BalanceCard from "@/components/ui/cards/BalanceCard";
-import PrimaryButton from "@/components/ui/buttons/PrimaryButton";
 import ProjectCard from "./components/ProjectCard";
 import DepositModal from "./components/DepositModal";
 import WithdrawModal from "./components/WithdrawModal";
@@ -21,6 +20,7 @@ import {
   toCryptoAsset,
 } from "@/app/hooks/useCryptoBalances";
 import { useTokenRates } from "@/app/hooks/useTokenRates";
+import PrimaryButton from "@/components/ui/buttons/PrimaryButton";
 
 // Import Komponen UI Baru
 import RecommendationResult from "./components/RecommendationResult";
@@ -33,25 +33,34 @@ export default function LendingPage() {
     deposit,
     getInfo,
     withdraw,
+    // syncPositions, // We don't need this immediately after withdraw anymore
     isLoadingRecommend,
     isLoadingInfo,
   } = useLending();
 
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [rec, setRec] = useState<RecommendResponse | null>(null);
-  const [selectedProject, setSelectedProject] = useState<ProjectItem | null>(null);
+  const [selectedProject, setSelectedProject] = useState<ProjectItem | null>(
+    null,
+  );
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
-  const [selectedPositionId, setSelectedPositionId] = useState<number | null>(null);
-  const [selectedPositionToken, setSelectedPositionToken] = useState<string>("mUSDC");
-  const [selectedPositionAmount, setSelectedPositionAmount] = useState<number>(0);
+  const [selectedPositionId, setSelectedPositionId] = useState<number | null>(
+    null,
+  );
+  const [selectedPositionToken, setSelectedPositionToken] =
+    useState<string>("mUSDC");
+  const [selectedPositionAmount, setSelectedPositionAmount] =
+    useState<number>(0);
 
   const router = useRouter();
 
   // State untuk logic pencarian
   const [amountInput, setAmountInput] = useState("1");
   const [token, setToken] = useState("eth");
-  const [projectFilter, setProjectFilter] = useState<"all" | "usdc" | "eth">("all");
+  const [projectFilter, setProjectFilter] = useState<"all" | "usdc" | "eth">(
+    "all",
+  );
 
   const [info, setInfo] = useState<InfoResponse | null>(null);
   const { address } = useAccount();
@@ -71,8 +80,15 @@ export default function LendingPage() {
   const { cryptoAssets, assetsWithBalance } = useCryptoBalances();
 
   const allSymbols = useMemo(
-    () => Array.from(new Set([...cryptoAssets, ...assetsWithBalance].map((a) => a.symbol.toUpperCase()))),
-    [cryptoAssets, assetsWithBalance]
+    () =>
+      Array.from(
+        new Set(
+          [...cryptoAssets, ...assetsWithBalance].map((a) =>
+            a.symbol.toUpperCase(),
+          ),
+        ),
+      ),
+    [cryptoAssets, assetsWithBalance],
   );
 
   const { rates, prevRates } = useTokenRates(allSymbols);
@@ -87,19 +103,27 @@ export default function LendingPage() {
       const sym = assetData.symbol.toUpperCase();
       const amount = Number(assetData.price) || 0;
       const priceNow = sym === "IDRX" ? 1 : rates[sym]?.price_idr || 0;
-      const priceBefore = sym === "IDRX" ? 1 : prevRates[sym]?.price_idr || priceNow;
+      const priceBefore =
+        sym === "IDRX" ? 1 : prevRates[sym]?.price_idr || priceNow;
 
       totalNow += amount * priceNow;
       totalBefore += amount * priceBefore;
     });
 
     const totalProfit = totalNow - totalBefore;
-    const growthPercentage = totalBefore > 0 ? (totalProfit / totalBefore) * 100 : 0;
-    const formatter = new Intl.NumberFormat("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const growthPercentage =
+      totalBefore > 0 ? (totalProfit / totalBefore) * 100 : 0;
+    const formatter = new Intl.NumberFormat("id-ID", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
 
     return {
       balance: formatter.format(totalNow),
-      profit: (totalProfit >= 0 ? "+ " : "- ") + "IDRX " + formatter.format(Math.abs(totalProfit)),
+      profit:
+        (totalProfit >= 0 ? "+ " : "- ") +
+        "IDRX " +
+        formatter.format(Math.abs(totalProfit)),
       growth: growthPercentage.toFixed(2) + "%",
       isLoss: totalProfit < 0,
     };
@@ -121,16 +145,80 @@ export default function LendingPage() {
     setRec(r);
   };
 
+  // --- FIXED HANDLE WITHDRAW LOGIC ---
   const handleWithdraw = async (payload: WithdrawPayload) => {
-    const res = await withdraw(payload); // call existing hook
-    if (res?.status === "success" && address) {
-      // Re-fetch posisi terbaru
-      const updatedInfo = await getInfo(address);
-      setInfo(updatedInfo);
-      setShowWithdrawModal(false);
+    try {
+      // 1. Execute Withdraw via API (Transactions happen here)
+      const res = await withdraw(payload);
+
+      if (res?.status === "success") {
+        // 2. Parse the remaining amount from the backend response
+        // Backend says "remaining_amount: 0.0", so we trust that.
+        const remRaw = res.remaining_amount;
+        const remaining =
+          typeof remRaw === "number"
+            ? remRaw
+            : remRaw !== undefined &&
+                remRaw !== null &&
+                !Number.isNaN(Number(remRaw))
+              ? Number(remRaw)
+              : null;
+
+        // 3. Optimistically update the UI (Don't wait for blockchain sync)
+        setInfo((prev) => {
+          if (!prev) return prev;
+
+          // Update the specific position's amount
+          let updatedPositions = prev.positions.map((p: any) =>
+            p.id === payload.id
+              ? {
+                  ...p,
+                  amount_deposited:
+                    remaining === null ? p.amount_deposited : remaining,
+                }
+              : p,
+          );
+
+          // 4. IMPORTANT: Filter out positions with 0 balance
+          // This makes the card disappear immediately from the UI
+          updatedPositions = updatedPositions.filter(
+            (p: any) => (p.amount_deposited ?? 0) > 0.000001,
+          );
+
+          // Recalculate total deposited for the header stats if needed
+          const total_deposited = updatedPositions.reduce(
+            (sum: number, p: any) => sum + (p.amount_deposited ?? 0),
+            0,
+          );
+
+          return {
+            ...prev,
+            positions: updatedPositions,
+            total_deposited,
+          };
+        });
+
+        // Close the modal
+        setShowWithdrawModal(false);
+        return res;
+      }
+
+      // If withdraw API returned failure/error, refresh data from server to be safe
+      if (address) {
+        const updated = await getInfo(address);
+        setInfo(updated);
+      }
+      return res;
+    } catch (err) {
+      console.error("handleWithdraw error:", err);
+      if (address) {
+        const updated = await getInfo(address);
+        setInfo(updated);
+      }
+      throw err;
     }
-    return res;
   };
+
   return (
     <main className="min-h-screen bg-[#1B1E34] text-white p-6 pb-28">
       {/* Header */}
@@ -153,7 +241,7 @@ export default function LendingPage() {
             <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
         </button>
-        <h1 className="text-xl font-bold uppercase tracking-tight">Lending</h1>
+        <h1 className="text-xl font-bold tracking-tight">Lending</h1>
         <div className="w-8"></div>
       </div>
 
@@ -173,7 +261,7 @@ export default function LendingPage() {
           <div className="relative z-20">
             <GetRecommendationCard
               onSearch={handleGetRecommendation}
-              isLoading={isLoadingRecommend} // Tambahkan baris ini
+              isLoading={isLoadingRecommend}
             />
           </div>
 
@@ -208,8 +296,7 @@ export default function LendingPage() {
                   setSelectedPositionId(parsedPos.id || idx);
                   setSelectedPositionToken(parsedPos.token || "mUSDC");
 
-                  // --- PERBAIKAN DI SINI ---
-                  // Tambahkan priority check: amount_deposited -> principal -> amount
+                  // Priority check for balance mapping
                   const balance =
                     parsedPos.amount_deposited ||
                     parsedPos.principal ||
@@ -239,7 +326,11 @@ export default function LendingPage() {
             <button
               key={f}
               onClick={() => setProjectFilter(f as any)}
-              className={`py-2 px-6 rounded-2xl text-xs font-bold transition-all border ${projectFilter === f ? "bg-gradient-to-b from-[#4338ca] to-[#7c3aed] border-transparent shadow-lg shadow-indigo-500/20" : "bg-white/5 text-white/40 border-white/10 hover:border-white/20"}`}
+              className={`py-2 px-6 rounded-2xl text-xs font-bold transition-all border ${
+                projectFilter === f
+                  ? "bg-gradient-to-b from-[#4338ca] to-[#7c3aed] border-transparent shadow-lg shadow-indigo-500/20"
+                  : "bg-white/5 text-white/40 border-white/10 hover:border-white/20"
+              }`}
             >
               {f.toUpperCase()}
             </button>
