@@ -6,7 +6,9 @@ import {
   ProjectItem,
   RecommendResponse,
   InfoResponse,
+  WithdrawPayload, // <-- tambahkan ini
 } from "@/app/hooks/useLending";
+import PortfolioCard from "./components/PortofolioCard";
 import { useAccount } from "wagmi";
 import BalanceCard from "@/components/ui/cards/BalanceCard";
 import PrimaryButton from "@/components/ui/buttons/PrimaryButton";
@@ -119,6 +121,16 @@ export default function LendingPage() {
     setRec(r);
   };
 
+  const handleWithdraw = async (payload: WithdrawPayload) => {
+    const res = await withdraw(payload); // call existing hook
+    if (res?.status === "success" && address) {
+      // Re-fetch posisi terbaru
+      const updatedInfo = await getInfo(address);
+      setInfo(updatedInfo);
+      setShowWithdrawModal(false);
+    }
+    return res;
+  };
   return (
     <main className="min-h-screen bg-[#1B1E34] text-white p-6 pb-28">
       {/* Header */}
@@ -181,46 +193,37 @@ export default function LendingPage() {
         <h2 className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-4">
           Your Lending Positions
         </h2>
+
         {isLoadingInfo ? (
-          <div className="text-center text-gray-500 py-4 animate-pulse italic">
+          <div className="text-center text-gray-500 py-4 animate-pulse italic text-xs">
             Syncing positions...
           </div>
         ) : info?.positions?.length ? (
           <div className="grid gap-3">
-            {info.positions.map((pos, idx) => {
-              const parsed = typeof pos === "string" ? JSON.parse(pos) : pos;
-              return (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between rounded-xl bg-gradient-to-br from-[#2b2b3d] to-[#1a1a24] border border-gray-800 p-4 shadow-lg"
-                >
-                  <div>
-                    <div className="text-white font-bold">
-                      {parsed.token || parsed.symbol} · {parsed.protocol}
-                    </div>
-                    <div className="text-white/40 text-xs mt-1 italic">
-                      Principal: {parsed.principal || 0} · Profit:{" "}
-                      {parsed.profit || 0}
-                    </div>
-                  </div>
-                  <PrimaryButton
-                    onClick={() => {
-                      setSelectedPositionId(parsed.id || idx);
-                      setSelectedPositionToken(parsed.token || "mUSDC");
-                      setSelectedPositionAmount(parsed.principal || 0);
-                      setShowWithdrawModal(true);
-                    }}
-                    fullWidth={false}
-                    className="h-10 text-xs"
-                  >
-                    Withdraw
-                  </PrimaryButton>
-                </div>
-              );
-            })}
+            {info.positions.map((pos, idx) => (
+              <PortfolioCard
+                key={idx}
+                position={pos}
+                onWithdraw={(parsedPos) => {
+                  setSelectedPositionId(parsedPos.id || idx);
+                  setSelectedPositionToken(parsedPos.token || "mUSDC");
+
+                  // --- PERBAIKAN DI SINI ---
+                  // Tambahkan priority check: amount_deposited -> principal -> amount
+                  const balance =
+                    parsedPos.amount_deposited ||
+                    parsedPos.principal ||
+                    parsedPos.amount ||
+                    0;
+
+                  setSelectedPositionAmount(balance);
+                  setShowWithdrawModal(true);
+                }}
+              />
+            ))}
           </div>
         ) : (
-          <div className="text-sm text-white/20 italic">
+          <div className="text-sm text-white/20 italic p-4 border border-white/5 rounded-xl text-center bg-white/5">
             No active positions found
           </div>
         )}
@@ -281,7 +284,7 @@ export default function LendingPage() {
         positionId={selectedPositionId || undefined}
         tokenSymbol={selectedPositionToken}
         currentAmount={selectedPositionAmount}
-        onConfirmWithdraw={withdraw}
+        onConfirmWithdraw={handleWithdraw}
       />
     </main>
   );

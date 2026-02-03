@@ -1,17 +1,16 @@
 "use client";
 
 import React, { useState } from "react";
-import PrimaryButton from "@/components/ui/buttons/PrimaryButton";
-import SecondaryButton from "@/components/ui/buttons/SecondaryButton";
-import { WithdrawResponse } from "@/app/hooks/useLending";
 import { useAccount, useWriteContract } from "wagmi";
 import { parseUnits, parseAbi } from "viem";
 import { waitForTransactionReceipt } from "@wagmi/core";
 import { config } from "@/app/providers";
-import { 
-  LENDING_POOL_ABI, 
-  LENDING_POOL_MUSDC, 
-  LENDING_POOL_MIDRX 
+import { X } from "lucide-react"; // Import icon X
+import { WithdrawResponse } from "@/app/hooks/useLending";
+import {
+  LENDING_POOL_ABI,
+  LENDING_POOL_MUSDC,
+  LENDING_POOL_MIDRX,
 } from "@/app/constant/smartContract";
 
 const DECIMALS = 6;
@@ -20,8 +19,8 @@ interface Props {
   open: boolean;
   onClose: () => void;
   positionId?: number | null;
-  tokenSymbol?: string; // mUSDC, mIDRX, etc.
-  currentAmount?: number; // Current deposited amount for validation
+  tokenSymbol?: string;
+  currentAmount?: number;
   onConfirmWithdraw: (payload: {
     id: number;
     token: string;
@@ -41,7 +40,7 @@ export default function WithdrawModal({
 }: Props) {
   const { address } = useAccount();
   const { writeContractAsync } = useWriteContract();
-  
+
   const [amount, setAmount] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<WithdrawResponse | null>(null);
@@ -55,7 +54,6 @@ export default function WithdrawModal({
     return !isNaN(n) && n > 0;
   };
 
-  // Determine lending pool address based on token
   const getLendingPoolAddress = () => {
     const token = tokenSymbol.toLowerCase();
     if (token.includes("usdc")) {
@@ -63,7 +61,6 @@ export default function WithdrawModal({
     } else if (token.includes("idrx")) {
       return LENDING_POOL_MIDRX as `0x${string}`;
     }
-    // Default to USDC pool
     return LENDING_POOL_MUSDC as `0x${string}`;
   };
 
@@ -88,6 +85,9 @@ export default function WithdrawModal({
     }
 
     const withdrawAmount = Number(amount);
+    const EPS = 1e-9;
+    const amountForApi =
+      withdrawAmount >= currentAmount - EPS ? -1 : withdrawAmount;
     if (withdrawAmount > currentAmount) {
       setErrorMsg(`Amount exceeds your balance (${currentAmount})`);
       return;
@@ -98,8 +98,8 @@ export default function WithdrawModal({
     try {
       const lendingPoolAddress = getLendingPoolAddress();
 
-      // 1. WITHDRAW FROM LENDING POOL (On-Chain via User Wallet)
-      setStatusText("Withdrawing from Pool...");
+      // 1. WITHDRAW FROM LENDING POOL
+      setStatusText("Withdrawing...");
       const withdrawHash = await writeContractAsync({
         address: lendingPoolAddress,
         abi: parseAbi(LENDING_POOL_ABI),
@@ -107,14 +107,13 @@ export default function WithdrawModal({
         args: [parseUnits(amount, DECIMALS), address],
       });
 
-      // 2. WAIT FOR WITHDRAW CONFIRMATION
-      setStatusText("Confirming Withdraw...");
-      await waitForTransactionReceipt(config, { 
-        hash: withdrawHash, 
-        confirmations: 1 
+      // 2. WAIT CONFIRMATION
+      await waitForTransactionReceipt(config, {
+        hash: withdrawHash,
+        confirmations: 1,
       });
 
-      // 3. CALL BACKEND TO UPDATE DATABASE RECORD
+      // 3. UPDATE BACKEND
       setStatusText("Updating Records...");
       const res = await onConfirmWithdraw({
         id: positionId,
@@ -129,7 +128,7 @@ export default function WithdrawModal({
       if (!res || res.status !== "success") {
         setErrorMsg(res?.message || "Failed to update records.");
       } else {
-        setStatusText("Withdraw Complete!");
+        setStatusText("Complete!");
       }
     } catch (err: any) {
       console.error("Withdraw error:", err);
@@ -138,7 +137,9 @@ export default function WithdrawModal({
       } else if (err?.message?.includes("insufficient")) {
         setErrorMsg("Insufficient LP token balance.");
       } else {
-        setErrorMsg(err?.shortMessage || err?.message || "Unexpected error occurred.");
+        setErrorMsg(
+          err?.shortMessage || err?.message || "Unexpected error occurred.",
+        );
       }
     } finally {
       setIsLoading(false);
@@ -146,113 +147,104 @@ export default function WithdrawModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
-      {/* Overlay */}
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/80 backdrop-blur-md"
         onClick={onClose}
       />
 
-      {/* Modal */}
-      <div className="relative w-full max-w-md rounded-2xl bg-[#0F1222] border border-white/10 shadow-2xl p-6 animate-in fade-in zoom-in">
-        {/* Header */}
-        <div className="mb-5">
-          <h3 className="text-xl font-bold text-white">Withdraw</h3>
-          <p className="text-sm text-white/60 mt-1">
-            Withdraw funds from your position
-          </p>
-        </div>
+      {/* Modal Container */}
+      <div className="relative w-full max-w-sm rounded-3xl bg-[#0F1222] border border-white/10 p-8 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+        {/* Close Button */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-white/20 hover:text-white transition-colors"
+        >
+          <X className="w-5 h-5" />
+        </button>
 
-        {/* Balance Info */}
-        {currentAmount > 0 && (
-          <div className="mb-4 p-3 rounded-lg bg-white/5 flex justify-between items-center">
-            <span className="text-sm text-white/70">Available Balance:</span>
-            <span className="text-sm font-semibold text-white">
-              {currentAmount.toFixed(2)} {tokenSymbol}
+        {/* Title */}
+        <h3 className="text-xl font-black text-white mb-6 uppercase tracking-tighter text-center">
+          Withdraw Funds
+        </h3>
+
+        <div className="space-y-6">
+          {/* Input Amount Section */}
+          <div className="bg-white/5 rounded-2xl p-6 border border-white/10 flex flex-col items-center justify-center gap-2 relative">
+            <span className="text-white/40 text-[10px] font-bold uppercase tracking-[0.2em]">
+              Enter Amount
             </span>
-          </div>
-        )}
 
-        {/* Amount */}
-        <div className="mb-4">
-          <label className="text-sm text-white/70 mb-2 block">
-            Amount
-          </label>
-          <div className="relative">
-            <input
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              inputMode="decimal"
-              placeholder="0.00"
-              className="w-full rounded-xl bg-white/5 px-4 py-3 pr-16 text-white outline-none focus:ring-2 focus:ring-purple-500"
-            />
+            <div className="flex flex-col items-center w-full">
+              <input
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0"
+                onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                className="bg-transparent text-5xl font-black text-white outline-none w-full text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-white/20"
+              />
+
+              {/* Token Name & Max Button */}
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-xs font-bold text-white/40 tracking-widest uppercase italic">
+                  {tokenSymbol}
+                </span>
+                <button
+                  onClick={handleMax}
+                  className="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 text-[9px] font-bold hover:bg-indigo-500/40 transition-colors"
+                >
+                  MAX
+                </button>
+              </div>
+
+              {/* Balance Indicator */}
+              <span className="text-[10px] text-white/30 mt-1">
+                Available: {currentAmount}
+              </span>
+            </div>
+          </div>
+
+          {/* Error Message */}
+          {errorMsg && (
+            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-[10px] text-center leading-tight">
+              {errorMsg}
+            </div>
+          )}
+
+          {/* Success Message */}
+          {result && result.status === "success" && (
+            <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 text-xs text-center font-bold uppercase">
+              Withdraw Successful!
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex flex-col gap-3">
             <button
-              onClick={handleMax}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-purple-400 hover:text-purple-300"
+              onClick={result ? onClose : handleConfirm}
+              disabled={isLoading || !address}
+              className="h-[52px] w-full flex items-center justify-center bg-white/5 border border-white/10 hover:bg-white/10 active:scale-95 transition-all rounded-2xl disabled:opacity-50 shadow-lg"
             >
-              MAX
+              <span className="text-white/40 font-bold tracking-[0.2em] text-xs uppercase">
+                {isLoading ? statusText : result ? "CLOSE" : "CONFIRM WITHDRAW"}
+              </span>
+              {isLoading && (
+                <div className="ml-3 w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+              )}
             </button>
-          </div>
-        </div>
 
-        {/* Status */}
-        {isLoading && statusText && (
-          <div className="mb-4 rounded-lg bg-blue-500/10 border border-blue-500/30 px-3 py-2 text-sm text-blue-300 flex items-center gap-2">
-            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-            </svg>
-            {statusText}
-          </div>
-        )}
-
-        {/* Error */}
-        {errorMsg && (
-          <div className="mb-4 rounded-lg bg-red-500/10 border border-red-500/30 px-3 py-2 text-sm text-red-300">
-            {errorMsg}
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex gap-3 mt-6">
-          <SecondaryButton onClick={onClose} className="flex-1">
-            Cancel
-          </SecondaryButton>
-          <PrimaryButton
-            onClick={handleConfirm}
-            disabled={isLoading || !address}
-            className="flex-1"
-          >
-            {isLoading ? "Processing..." : "Confirm Withdraw"}
-          </PrimaryButton>
-        </div>
-
-        {/* Result */}
-        {result && result.status === "success" && (
-          <div className="mt-5 rounded-lg bg-green-500/10 border border-green-500/30 p-3 text-sm text-white">
-            <div className="font-semibold text-green-400 mb-1">✓ Withdraw Successful!</div>
-            {result.tx_hash && (
-              <div className="break-all text-xs text-white/60 mt-1">
-                Tx: {result.tx_hash}
-              </div>
-            )}
-            {result.explorer_url && (
-              <a 
-                href={result.explorer_url} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-xs text-blue-400 hover:underline mt-1 block"
+            {!result && !isLoading && (
+              <button
+                onClick={onClose}
+                className="text-[10px] text-white/20 font-bold uppercase tracking-widest hover:text-white transition-colors py-2"
               >
-                View on Explorer →
-              </a>
-            )}
-            {result.message && (
-              <div className="text-xs text-white/70 mt-1">
-                {result.message}
-              </div>
+                Cancel Transaction
+              </button>
             )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
