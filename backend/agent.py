@@ -659,18 +659,19 @@ def lending_withdraw_tool(position_id: int, amount_lp: float, token: str):
     
     if amount_lp < 0 or remaining_amount == 0:
         del_resp = supabase.table("user_lending_positions").delete().eq(
-            "id", position["id"]).eq("wallet_address", sender).execute()
+            "id", position["id"]).execute()
 
-        check = supabase.table("user_lending_positions").select("id").eq(
-            "id", position["id"]).eq("wallet_address", sender).execute()
+        check = supabase.table("user_lending_positions").select(
+            "id").eq("id", position["id"]).execute()
         if check.data:
             supabase.table("user_lending_positions").delete().eq(
-                "id", position["id"]).eq("wallet_address", sender).execute()
-            check2 = supabase.table("user_lending_positions").select("id").eq(
-                "id", position["id"]).eq("wallet_address", sender).execute()
+                "id", position["id"]).execute()
+            
+            check2 = supabase.table("user_lending_positions").select(
+                "id").eq("id", position["id"]).execute()
             if check2.data:
-                supabase.table("user_lending_positions").update({"amount": 0, "lp_shares": 0}).eq(
-                    "id", position["id"]).eq("wallet_address", sender).execute()
+                supabase.table("user_lending_positions").update(
+                    {"amount": 0, "lp_shares": 0}).eq("id", position["id"]).execute()
     else:
         supabase.table("user_lending_positions").update({
             "amount": remaining_amount,
