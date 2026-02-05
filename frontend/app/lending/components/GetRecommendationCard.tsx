@@ -54,7 +54,7 @@ export default function GetRecommendationCard({ onSearch, isLoading }: Props) {
   const currentSymbol = selectedToken?.symbol || "USDC";
 
   return (
-    <div className="w-full p-6 rounded-t-2xl bg-gradient-to-br from-[#2b2b3d] to-[#1a1a24] border border-gray-800 shadow-xl overflow-hidden">
+    <div className="w-full p-6 rounded-t-2xl bg-gradient-to-br from-[#2b2b3d] to-[#1a1a24] border border-gray-800 shadow-xl">
       <div className="mb-6">
         <h2 className="text-white text-lg font-bold leading-tight opacity-90">
           Let the AI Agents search best lending position for you!
@@ -69,7 +69,7 @@ export default function GetRecommendationCard({ onSearch, isLoading }: Props) {
             onClick={() => setIsOpen(!isOpen)}
             disabled={isLoading}
             // Ubah min-w-[145px] jadi w-[110px] di mobile, 145px di desktop agar muat di layar kecil
-            className={`h-[42px] flex items-center gap-2 sm:gap-3 bg-white/5 border border-white/10 hover:bg-white/10 transition-all px-3 sm:px-4 rounded-xl w-[110px] sm:w-[145px] ${isLoading ? "opacity-50 cursor-not-allowed" : ""}`}
+            className={`h-[42px] flex items-center gap-2 sm:gap-3 bg-white/5 border border-white/10 hover:bg-white/10 transition-all px-3 sm:px-4 rounded-xl w-[130px] sm:w-[145px] ${isLoading ? "opacity-50 cursor-not-allowed" : ""}`}
           >
             <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full overflow-hidden flex items-center justify-center bg-white/5 border border-white/10 shrink-0">
               <Image
